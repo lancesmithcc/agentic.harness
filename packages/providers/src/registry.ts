@@ -45,9 +45,10 @@ export async function buildFleet(profileName?: string): Promise<Fleet> {
   for (const [id, facts] of Object.entries(API_PROVIDER_FACTS)) {
     const pc = config.providers[id];
     if (pc && pc.enabled === false) continue;
+    const { SecretStore } = await import("@harness/core");
     const apiKey = pc?.apiKey
       ? resolveSecret(pc.apiKey, facts.envVar)
-      : (process.env[facts.envVar] ?? null);
+      : (process.env[facts.envVar] ?? new SecretStore(profile).get(id) ?? null);
     if (!apiKey && !pc) continue; // not configured at all
     providers.set(id, facts.make(apiKey));
   }

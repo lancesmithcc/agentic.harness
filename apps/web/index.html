@@ -260,8 +260,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       return b;
     };
     m.appendChild(mk("", "AUTO", "smart routing"));
+    (S.meta.models || []).forEach(function (mm) {
+      if (!seenIds[mm.id] && !mm.orchestratorOnly) m.appendChild(mk(mm.id, mm.id, "add key to enable", true));
+    });
     m.appendChild(el("div", "nav-section-label", "fleet"));
-    (S.models || []).forEach(function (mod) {
+    var seenIds = {};
+    (S.models || []).forEach(function (mod) { seenIds[mod.id] = 1;
       var dis = mod.orchestratorOnly && !S.settings.astraAvailable;
       m.appendChild(mk(mod.id, mod.id, (mod.caps.coding != null ? "c" + mod.caps.coding + " r" + mod.caps.reasoning : "") + (dis ? " · gated" : ""), dis));
     });

@@ -84,7 +84,8 @@ export class ClaudeCodeProvider implements ModelProvider {
   async *generate(request: HarnessRequest): AsyncIterable<HarnessEvent> {
     const model = request.model.includes("/") ? request.model.split("/").slice(1).join("/") : request.model;
     const args = ["-p", flatten(request.messages), "--output-format", "stream-json", "--verbose"];
-    if (model && model !== "default") args.push("--model", model);
+    const ALIASES = new Set(["sonnet", "opus", "haiku"]);
+    if (model && model !== "default" && ALIASES.has(model)) args.push("--model", model);
 
     const child = spawn("claude", args, {
       env: { ...process.env, CLAUDE_CONFIG_DIR: this.configDir },
