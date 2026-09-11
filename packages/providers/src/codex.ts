@@ -76,6 +76,11 @@ export class CodexProvider implements ModelProvider {
     let full = "";
     let sawError = false;
     const stderr: string[] = [];
+    // CLI subprocesses must never hang the fallback chain: hard ceiling.
+    const killer = setTimeout(() => {
+      try { child.kill("SIGKILL"); } catch { /* already gone */ }
+    }, 90_000);
+    child.on("exit", () => clearTimeout(killer));
     child.stderr.on("data", (d: Buffer) => {
       if (stderr.length < 20) stderr.push(d.toString());
     });
