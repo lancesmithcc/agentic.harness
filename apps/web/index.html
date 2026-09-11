@@ -54,7 +54,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         <span id="wsName">~</span>
       </button>
       <span class="crumb" id="crumb">Conversation</span>
-      <div class="fleet-chips" id="chips"></div>
+      <div class="header-right">
+        <div class="pills" id="pills"></div>
+        <div class="fleet-chips" id="chips"></div>
+      </div>
     </header>
     <div id="view"></div>
 
@@ -62,7 +65,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <div class="composer-inner">
         <textarea id="task" rows="1" placeholder="how shall we proceed creator?"></textarea>
         <div class="composer-bar">
-          <button class="modelpick" id="modelPick" type="button" title="Choose the model for this task — AUTO routes via delegation.md"><span class="mp-k">AUTO</span><span class="mp-caret">\u25BE</span></button>
+          <button class="modelpick" id="modelPick" type="button" title="Choose the model for this task"><span class="mp-k">AUTO</span><span class="mp-caret">▾</span></button>
           <div class="modelmenu" id="modelMenu" hidden></div>
           <select id="pin" hidden><option value="">AUTO · delegation.md</option></select>
           <label class="chk" title="Delegate: if the chosen model fails or rate-limits, the harness continues with the next model in the chain. Uncheck to stay strictly on the selected model."><input type="checkbox" id="delegate" checked /> delegate</label>
@@ -260,7 +263,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       if (!dis) b.onclick = function () { $("pin").value = id; renderModelPick(); m.hidden = true; };
       return b;
     };
-    m.appendChild(mk("", "AUTO", "routed by delegation.md"));
+    m.appendChild(mk("", "AUTO", "smart routing"));
     m.appendChild(el("div", "nav-section-label", "fleet"));
     (S.models || []).forEach(function (mod) {
       var dis = mod.orchestratorOnly && !S.settings.astraAvailable;
@@ -391,22 +394,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         .then(function (r) { return r.json(); })
         .then(function (s) { S.settings = s; loadStatus(); });
     };
-    var startCard = card();
-    row = el("div", "row");
-    row.appendChild(el("h3", null, "Starting model"));
-    var sel = el("select");
-    sel.className = "panel-input"; sel.style.padding = "6px 10px";
-    var auto = el("option"); auto.value = ""; auto.textContent = "AUTO · delegation.md"; sel.appendChild(auto);
-    (S.models || []).forEach(function (m) { var o = el("option"); o.value = m.id; o.textContent = m.id; if (m.orchestratorOnly) { o.disabled = true; o.textContent += " (gated)"; } sel.appendChild(o); });
-    sel.value = (S.settings.startModel && [...sel.options].some(function (o) { return o.value === S.settings.startModel; })) ? S.settings.startModel : "";
-    row.appendChild(sel); startCard.appendChild(row);
-    startCard.appendChild(el("div", null, "The first mind every new task starts with when you haven\u2019t pinned one in the composer. Fallback chain still applies."));
-    sel.onchange = function () {
-      fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ startModel: sel.value }) })
-        .then(function (r) { return r.json(); }).then(function (v) { S.settings = v; renderModelPick(); });
-    };
-    p.appendChild(startCard);
-
     p.appendChild(astraCard);
 
     p.appendChild(el("div", "nav-section-label", "Model roster"));
