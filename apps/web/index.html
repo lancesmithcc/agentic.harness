@@ -620,6 +620,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   function loadUsageChips() { loadStatus(); }
   function loadStatus() {
     get("/api/status" + qs()).then(function (d) {
+      try {
       S.status = d;
       S.settings = d.settings || S.settings;
       if (document.documentElement.dataset.theme !== S.settings.theme) applyTheme(S.settings.theme);
@@ -658,7 +659,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       renderModelPick();
       document.querySelector(".chk.astra-only").hidden = !S.settings.astraAvailable;
       if (S.view === "settings") renderView();
-    });
+      } catch (err) { feed.appendChild(el("div", "sys error", "status render failed: " + err.message)); throw err; }
+    }).catch(function (e) { feed.appendChild(el("div", "sys error", "status fetch failed: " + e.message)); });
   }
 
   // ---------- ambient: cursor glow ----------
@@ -675,46 +677,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   })();
 
   // ---------- halftone ripple lattice (superseded) ----------
-  /* ambient replaced */ (function () {
-    var cv = $("field"), ctx = cv.getContext("2d"), W, H, dots = [];
-    var SP = 30, R = 0.9;
-    function build() {
-      W = cv.width = innerWidth; H = cv.height = innerHeight;
-      dots = [];
-      for (var layer = 0; layer < 3; layer++) {
-        var sp = SP * (1 + layer * 0.9), off = layer * sp * 0.37;
-        for (var y = off; y < H; y += sp)
-          for (var x = off; x < W; x += sp)
-            dots.push({ x: x + (Math.random() - 0.5) * sp * 0.6, y: y + (Math.random() - 0.5) * sp * 0.6,
-                        p: Math.random() * 6.28, s: 0.4 + Math.random() * 1.4,
-                        r: R * (0.35 + Math.random() * (layer === 0 ? 0.9 : 1.6)),
-                        o: layer === 0 ? 1 : 0.55 });
-      }
-    }
-    build(); addEventListener("resize", build);
-    function frame(ts) {
-      var gold = document.documentElement.dataset.theme !== "inverse";
-      var base = gold ? "255,223,44" : "0,32,211";
-      ctx.clearRect(0, 0, W, H);
-      for (var i = 0; i < dots.length; i++) {
-        var d = dots[i];
-        var w = Math.sin(ts / (1500 / d.s) + d.p) * 0.5 + 0.5; // per-dot phase & speed
-        var r = d.r + w * (d.o === 1 ? 1.3 : 2.6);
-        ctx.beginPath();
-        ctx.arc(d.x, d.y, r, 0, 6.2832);
-        ctx.fillStyle = "rgba(" + base + "," + ((0.04 + w * 0.08) * d.o).toFixed(3) + ")";
-        ctx.fill();
-      }
-      if (!matchMedia("(prefers-reduced-motion: reduce)").matches) requestAnimationFrame(frame);
-    }
-    requestAnimationFrame(frame);
-  })();
 
   get("/api/meta").then(function (d) {
     S.meta = d; S.verbs = (d.verbs || []).length ? d.verbs : ["Crystallizing"];
     S.settings = d.settings || S.settings;
     applyTheme(S.settings.theme);
   }).catch(function () { S.verbs = ["Crystallizing"]; });
+  window.__ls = loadStatus; window.__S = S;
   loadStatus();
   setView("chat");
 })();
