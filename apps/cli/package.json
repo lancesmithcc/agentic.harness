@@ -1,0 +1,17 @@
+{
+  "name": "@harness/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "harness": "./bin/harness" },
+  "dependencies": {
+    "@harness/core": "workspace:*",
+    "@harness/router": "workspace:*",
+    "@harness/providers": "workspace:*",
+    "@harness/skills": "workspace:*",
+    "@harness/tools": "workspace:*",
+    "@harness/context": "workspace:*",
+    "@harness/profiles": "workspace:*",
+    "@harness/sessions": "workspace:*",
+    "commander": "^12.1.0"
+  }
+}

@@ -1,0 +1,87 @@
+/**
+ * Provider registry: assembles the fleet for a profile from config +
+ * secrets, applying capability overrides. This is the single place the
+ * rest of the harness obtains ModelProvider instances.
+ */
+import { loadConfig, resolveSecret, type ProfileConfig } from "@harness/core";
+import type { Model, ModelProvider } from "@harness/core";
+import { ClaudeCodeProvider } from "./claude-code.ts";
+import { CodexProvider } from "./codex.ts";
+import { LocalProvider, detectLocalEndpoints, type LocalEndpoint } from "./local.ts";
+import { DeepSeekProvider } from "./deepseek.ts";
+import { ZAIProvider } from "./zai.ts";
+import { KimiProvider } from "./kimi.ts";
+import { MiniMaxProvider } from "./minimax.ts";
+import { OpenRouterProvider } from "./openrouter.ts";
+
+export interface Fleet {
+  profile: string;
+  providers: Map<string, ModelProvider>;
+  config: ProfileConfig;
+}
+
+const API_PROVIDER_FACTS: Record<string, { envVar: string; make: (key: string | null) => ModelProvider }> = {
+  deepseek: { envVar: "DEEPSEEK_API_KEY", make: (k) => new DeepSeekProvider(k) },
+  zai: { envVar: "ZAICODINGPLAN_KEY", make: (k) => new ZAIProvider(k) },
+  kimi: { envVar: "KIMI_API_KEY", make: (k) => new KimiProvider(k) },
+  minimax: { envVar: "MINIMAX_API_KEY", make: (k) => new MiniMaxProvider(k) },
+  openrouter: { envVar: "OPENROUTER_API_KEY", make: (k) => new OpenRouterProvider(k) },
+};
+
+export async function buildFleet(profileName?: string): Promise<Fleet> {
+  const { loadConfig: lc, activeProfileName } = await import("@harness/core");
+  const profile = profileName ?? activeProfileName();
+  const loaded = lc(profile);
+  const config = loaded.profile;
+  const providers = new Map<string, ModelProvider>();
+
+  // Subscription CLI adapters — always present; auth owned by their CLIs.
+  providers.set("claude-code", new ClaudeCodeProvider(profile));
+  providers.set("codex", new CodexProvider(profile));
+
+  // API providers from profile config (enabled by default if a key resolves).
+  for (const [id, facts] of Object.entries(API_PROVIDER_FACTS)) {
+    const pc = config.providers[id];
+    if (pc && pc.enabled === false) continue;
+    const apiKey = pc?.apiKey
+      ? resolveSecret(pc.apiKey, facts.envVar)
+      : (process.env[facts.envVar] ?? null);
+    if (!apiKey && !pc) continue; // not configured at all
+    providers.set(id, facts.make(apiKey));
+  }
+
+  // Local endpoints: configured ones first, then autodetected.
+  const localEndpoints: LocalEndpoint[] = [...(config.local?.endpoints ?? [])];
+  const detected = await detectLocalEndpoints();
+  for (const d of detected) {
+    if (!localEndpoints.some((e) => e.url.replace(/\/$/, "") === d.url.replace(/\/$/, ""))) {
+      localEndpoints.push(d);
+    }
+  }
+  if (localEndpoints.length > 0) {
+    providers.set("local", new LocalProvider(localEndpoints[0]!));
+  }
+
+  return { profile, providers, config };
+}
+
+export async function fleetModels(fleet: Fleet): Promise<Model[]> {
+  const all: Model[] = [];
+  await Promise.all(
+    [...fleet.providers.values()].map(async (p) => {
+      try {
+        const models = await p.models();
+        // Apply capability overrides from profile config.
+        const overrides = fleet.config.capabilityOverrides ?? {};
+        for (const m of models) {
+          const ov = overrides[m.model] ?? overrides[m.id];
+          if (ov) m.capabilities = { ...m.capabilities, ...(ov as object) };
+          all.push(m);
+        }
+      } catch {
+        // provider unavailable — health() will report it
+      }
+    }),
+  );
+  return all;
+}
