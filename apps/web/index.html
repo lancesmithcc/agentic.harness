@@ -16,7 +16,9 @@ FIRST VIEWPORT: left rail (brand, new session, nav, profile+theme) + conversatio
 FORM: user-pinned Claude Code-style operator shell; seed: pinned-brand extension of the DeepHarness web client.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 -->
-<canvas id="field" aria-hidden="true"></canvas>
+<div class="ambient" aria-hidden="true"><div class="glow"></div><svg class="grain" width="0" height="0"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2"/></filter></svg></div>
+<img class="markmark" src="/assets/sriyantra.png" alt="" aria-hidden="true"/>
+<div class="noised" aria-hidden="true"></div>
 <div class="app" id="app" data-busy="0">
   <aside class="rail">
     <div class="brand">
@@ -60,7 +62,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <div class="composer-inner">
         <textarea id="task" rows="1" placeholder="Give the harness a task — routing follows delegation.md"></textarea>
         <div class="composer-bar">
-          <select id="pin"><option value="">AUTO · delegation.md</option></select>
+          <button class="modelpick" id="modelPick" type="button"><span class="mp-k">AUTO</span><span class="mp-v">delegation.md</span></button>
+          <div class="modelmenu" id="modelMenu" hidden></div>
+          <select id="pin" hidden><option value="">AUTO · delegation.md</option></select>
           <label class="chk"><input type="checkbox" id="escalate" /> escalate</label>
           <label class="chk astra-only" hidden><input type="checkbox" id="orchestrator" /> orchestrator job</label>
           <span class="spacer"></span>
@@ -234,6 +238,34 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     S.busy = b; $("app").dataset.busy = b ? "1" : "0";
     $("send").hidden = b; $("stop").hidden = !b;
   }
+  // ---------- manual model picker ----------
+  function renderModelPick() {
+    var btn = $("modelPick");
+    var v = $("pin").value;
+    if (!v) { btn.querySelector(".mp-k").textContent = "AUTO"; btn.querySelector(".mp-v").textContent = "delegation.md"; }
+    else { btn.querySelector(".mp-k").textContent = "PIN"; btn.querySelector(".mp-v").textContent = v.split("/")[1] || v; }
+  }
+  function openModelMenu() {
+    var m = $("modelMenu"); m.textContent = "";
+    var mk = function (id, label, sub, dis) {
+      var b = el("button", "mm-row" + (id === $("pin").value ? " sel" : ""));
+      if (dis) b.classList.add("dis");
+      b.appendChild(el("span", "mm-id", label));
+      b.appendChild(el("span", "mm-sub", sub));
+      if (!dis) b.onclick = function () { $("pin").value = id; renderModelPick(); m.hidden = true; };
+      return b;
+    };
+    m.appendChild(mk("", "AUTO", "routed by delegation.md"));
+    m.appendChild(el("div", "nav-section-label", "fleet"));
+    (S.models || []).forEach(function (mod) {
+      var dis = mod.orchestratorOnly && !S.settings.astraAvailable;
+      m.appendChild(mk(mod.id, mod.id, (mod.caps.coding != null ? "c" + mod.caps.coding + " r" + mod.caps.reasoning : "") + (dis ? " · gated" : ""), dis));
+    });
+    m.hidden = false;
+  }
+  $("modelPick").onclick = function (e) { e.stopPropagation(); var m = $("modelMenu"); if (m.hidden) openModelMenu(); else m.hidden = true; };
+  document.addEventListener("click", function (e) { if (!e.target.closest(".modelpick") && !e.target.closest(".modelmenu")) $("modelMenu").hidden = true; });
+  renderModelPick();
   $("send").onclick = send;
   $("stop").onclick = function () { if (S.abort) S.abort.abort(); };
   $("task").addEventListener("keydown", function (e) {
@@ -614,13 +646,27 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         chips.appendChild(chip);
       });
       pin.value = prev && [...pin.options].some(function (o) { return o.value === prev; }) ? prev : "";
+      renderModelPick();
       document.querySelector(".chk.astra-only").hidden = !S.settings.astraAvailable;
       if (S.view === "settings") renderView();
     });
   }
 
-  // ---------- halftone ripple lattice ----------
+  // ---------- ambient: cursor glow ----------
   (function () {
+    var raf = 0;
+    addEventListener("pointermove", function (e) {
+      if (raf) return;
+      raf = requestAnimationFrame(function () {
+        document.documentElement.style.setProperty("--mx", e.clientX + "px");
+        document.documentElement.style.setProperty("--my", e.clientY + "px");
+        raf = 0;
+      });
+    });
+  })();
+
+  // ---------- halftone ripple lattice (superseded) ----------
+  /* ambient replaced */ (function () {
     var cv = $("field"), ctx = cv.getContext("2d"), W, H, dots = [];
     var SP = 30, R = 0.9;
     function build() {
