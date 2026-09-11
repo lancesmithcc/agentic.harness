@@ -516,13 +516,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   function loadTranscript(id) {
     get("/api/session?id=" + encodeURIComponent(id) + "&" + (S.profile ? "profile=" + S.profile : "")).then(function (d) {
       S.sessionId = id; feed.textContent = ""; setView("chat");
+      var firstUser = true;
       (d.events || []).forEach(function (e) {
-        if (e.kind === "user-message") feed.appendChild(el("div", "msg user", e.text));
-        else if (e.kind === "assistant-text") {
+        if (e.kind === "user-message") {
+          if (firstUser) { firstUser = false; return; } // title already shown by the rail
+          feed.appendChild(el("div", "msg user", e.text));
+        } else if (e.kind === "assistant-text") {
           var b = el("div", "msg assistant"); b.appendChild(el("div", "pill", e.model));
           b.appendChild(el("div", null, e.text)); feed.appendChild(b);
-        } else if (e.kind === "routing") sysline("\u2192 " + e.decision.selected + " \u00b7 " + e.decision.category, "route");
-        else if (e.kind === "fallback") sysline("\u21b3 " + e.from + " \u2192 " + e.to, "fallback");
+        } else if (e.kind === "fallback") sysline("\u21b3 " + e.from + " \u2192 " + e.to, "fallback");
       });
     });
   }
