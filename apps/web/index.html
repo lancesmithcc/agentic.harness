@@ -228,15 +228,14 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     if (evt.t === "route") {
       S.sessionId = evt.session;
       var d = evt.decision;
-      pill.textContent = "→ " + d.selected;
-      sysline("→ " + d.selected + " · " + d.category + " " + (d.confidence || 0).toFixed(2), "route");
+      pill.textContent = (d.selected.split("/")[1] || d.selected);
     } else if (evt.t === "delta") { state.acc += evt.text; body.textContent += evt.text; }
     else if (evt.t === "thinking") { thinkBody.textContent += evt.text; thinkBody.parentElement.open = true; }
     else if (evt.t === "fallback") {
-      sysline("↳ " + evt.from + " unavailable (" + evt.cause + ") — continuing with " + evt.to, "fallback");
-      pill.textContent = "→ " + evt.to;
+      sysline("↳ " + (evt.from.split("/")[1] || evt.from) + " unavailable — continuing with " + (evt.to.split("/")[1] || evt.to), "fallback");
+      pill.textContent = (evt.to.split("/")[1] || evt.to);
     } else if (evt.t === "done") {
-      body.textContent = evt.text; pill.textContent = evt.model;
+      body.textContent = evt.text; pill.textContent = (evt.model.split("/")[1] || evt.model);
     } else if (evt.t === "error") { sysline("✗ " + evt.message, "error"); }
   }
   function setBusy(b) {
