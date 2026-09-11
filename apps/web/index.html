@@ -60,9 +60,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
     <footer class="composer" id="composer">
       <div class="composer-inner">
-        <textarea id="task" rows="1" placeholder="Give the harness a task — routing follows delegation.md"></textarea>
+        <textarea id="task" rows="1" placeholder="how shall we proceed creator?"></textarea>
         <div class="composer-bar">
-          <button class="modelpick" id="modelPick" type="button" title="Choose the model for this task — AUTO routes via delegation.md"><span class="mp-k">AUTO</span><span class="mp-v">delegation.md</span><span class="mp-caret">\u25BE</span></button>
+          <button class="modelpick" id="modelPick" type="button" title="Choose the model for this task — AUTO routes via delegation.md"><span class="mp-k">AUTO</span><span class="mp-caret">\u25BE</span></button>
           <div class="modelmenu" id="modelMenu" hidden></div>
           <select id="pin" hidden><option value="">AUTO · delegation.md</option></select>
           <label class="chk" title="Delegate: if the chosen model fails or rate-limits, the harness continues with the next model in the chain. Uncheck to stay strictly on the selected model."><input type="checkbox" id="delegate" checked /> delegate</label>
@@ -246,8 +246,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     var v = $("pin").value;
     if (!v) {
       btn.querySelector(".mp-k").textContent = "AUTO";
-      var sm = S.settings && S.settings.startModel;
-      btn.querySelector(".mp-v").textContent = sm ? "starts " + (sm.split("/")[1] || sm) : "delegation.md";
+      var mpv = btn.querySelector(".mp-v"); if (mpv) mpv.textContent = "";
     }
     else { btn.querySelector(".mp-k").textContent = "PIN"; btn.querySelector(".mp-v").textContent = v.split("/")[1] || v; }
   }
