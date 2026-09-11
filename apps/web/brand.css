@@ -449,7 +449,7 @@ textarea.panel-input { resize: vertical; min-height: 74px; width: 100%; }
 [data-theme="inverse"] .btn-send,
 [data-theme="inverse"] .newsession {
   background: linear-gradient(120deg, #b9e6da 0%, #6f9df0 26%, #3f6df0 54%, #5570e8 72%, #9d9cf0 88%, #efb9d2 100%);
-  color: #0c1440;
+  color: #ffffff;
 }
 [data-theme="inverse"] .btn-send:hover,
 [data-theme="inverse"] .newsession:hover { box-shadow: 0 8px 26px rgba(63,109,240,.4); }
