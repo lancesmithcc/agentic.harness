@@ -330,6 +330,13 @@ Bun.serve({
     }
 
     if (url.pathname === "/api/sessions") return json({ sessions: listSessions(profile) });
+    if (url.pathname === "/api/session" && req.method === "DELETE") {
+      const id = url.searchParams.get("id") ?? "";
+      if (!/^[a-z0-9-]+$/i.test(id)) return json({ error: "bad id" }, 400);
+      const { rmSync } = await import("node:fs");
+      try { rmSync(join(HARNESS_HOME, "profiles", profile, "sessions", id + ".jsonl")); return json({ ok: true }); }
+      catch { return json({ error: "not found" }, 404); }
+    }
     if (url.pathname === "/api/session") {
       const store = new SessionStore(profile, url.searchParams.get("id") ?? "");
       return json({ events: store.all() });

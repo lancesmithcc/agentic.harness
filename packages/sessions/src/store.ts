@@ -61,7 +61,7 @@ export class SessionStore {
   }
 }
 
-export function listSessions(profile: string): Array<{ id: string; events: number; modified: string }> {
+export function listSessions(profile: string): Array<{ id: string; events: number; modified: string; title?: string }> {
   const dir = join(HARNESS_HOME, "profiles", profile, "sessions");
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
@@ -69,9 +69,17 @@ export function listSessions(profile: string): Array<{ id: string; events: numbe
     .map((f) => {
       const content = readFileSync(join(dir, f), "utf8");
       const lines = content.split("\n").filter((l) => l.trim());
+      let title: string | undefined;
+      for (const l of lines) {
+        try {
+          const e = JSON.parse(l) as { kind?: string; text?: string };
+          if (e.kind === "user-message" && e.text) { title = e.text.slice(0, 48); break; }
+        } catch { /* skip */ }
+      }
       return {
         id: f.replace(".jsonl", ""),
         events: lines.length,
+        title,
         modified: new Date(lines[lines.length - 1] ? JSON.parse(lines[lines.length - 1]!).ts : 0).toISOString(),
       };
     })

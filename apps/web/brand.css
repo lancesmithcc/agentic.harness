@@ -454,3 +454,13 @@ textarea.panel-input { resize: vertical; min-height: 74px; width: 100%; }
 [data-theme="inverse"] .btn-send:hover,
 [data-theme="inverse"] .newsession:hover { box-shadow: 0 8px 26px rgba(63,109,240,.4); }
 [data-theme="inverse"] .switch input:checked + .knob { background: linear-gradient(120deg, #b9e6da, #3f6df0 55%, #9d9cf0 85%, #efb9d2); }
+
+/* rail chat history */
+.chatlist { display: flex; flex-direction: column; gap: 1px; padding: 0 8px 8px; max-height: 30vh; overflow-y: auto; }
+.chatrow { display: flex; align-items: center; gap: 6px; border-radius: 8px; padding: 5px 6px 5px 10px; cursor: pointer; transition: background var(--t-fast); }
+.chatrow:hover, .chatrow.active { background: var(--surface-2); }
+.chatlabel { flex: 1; font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chatrow.active .chatlabel { color: var(--accent); }
+.chatdel { background: none; border: 0; color: var(--text-faint); font-size: 11px; cursor: pointer; opacity: 0; padding: 2px 4px; border-radius: 5px; transition: all var(--t-fast); }
+.chatrow:hover .chatdel { opacity: 1; }
+.chatdel:hover { color: var(--fail); }

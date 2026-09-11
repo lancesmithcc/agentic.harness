@@ -24,6 +24,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <div><div class="name">lancesmith.cc</div><div class="sub">Harness</div></div>
     </div>
     <button class="newsession" id="newSession">New session</button>
+    <div class="nav-section-label" style="padding:0 10px;">History</div>
+    <div id="chatList" class="chatlist"></div>
     <nav class="nav" id="nav">
       <div class="nav-section-label">Workspace</div>
       <button class="nav-item active" data-view="chat" type="button">Conversation</button>
@@ -209,6 +211,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     }).then(function () {
       think.stop(); setBusy(false); loadUsageChips();
       if (!body.textContent && !state.acc) body.textContent = "(no output)";
+      loadChatList();
     });
   }
   var state = { acc: "" };
@@ -447,7 +450,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           fetch("/api/models" + qs(), { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: id, unhide: true }) })
             .then(function (r) { return r.json(); }).then(function (d) { if (!d.error) loadStatus(); });
         };
-        row.appendChild(un); c.appendChild(row); p.appendChild(c);
+        row.appendChild(un); c.appendChild(row);
+        var del2 = el("button", "rowbtn", "delete");
+        del2.onclick = function () {
+          fetch("/api/session?id=" + encodeURIComponent(id) + qs().replace("?", "&"), { method: "DELETE" })
+            .then(function () { if (S.sessionId === id) { S.sessionId = null; feed.textContent = ""; } renderView(); });
+        };
+        row.appendChild(del2); c.appendChild(row); p.appendChild(c);
       });
     }
 
@@ -478,10 +487,32 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       sysline("resumed " + id, "route");
     });
   }
-  // rehydrate the most recent conversation on boot
+  function loadChatList() {
+    get("/api/sessions").then(function (d) {
+      var list = $("chatList"); list.textContent = "";
+      (d.sessions || []).slice(0, 12).forEach(function (s) {
+        var row = el("div", "chatrow" + (s.id === S.sessionId ? " active" : ""));
+        var label = el("span", "chatlabel", s.title || s.id);
+        label.onclick = function () { loadTranscript(s.id); loadChatList(); };
+        var del = el("button", "chatdel"); del.textContent = "\u2715"; del.title = "delete chat";
+        del.onclick = function (ev) {
+          ev.stopPropagation();
+          fetch("/api/session?id=" + encodeURIComponent(s.id) + (S.profile ? "&profile=" + S.profile : ""), { method: "DELETE" })
+            .then(function (r) { return r.json(); })
+            .then(function () {
+              if (S.sessionId === s.id) { S.sessionId = null; feed.textContent = ""; }
+              loadChatList();
+            });
+        };
+        row.appendChild(label); row.appendChild(del); list.appendChild(row);
+      });
+    });
+  }
+  // rehydrate the most recent conversation on boot, then list the rest
   get("/api/sessions").then(function (d) {
     var recent = (d.sessions || []).find(function (s) { return s.events > 1; });
     if (recent) loadTranscript(recent.id);
+    loadChatList();
   });
 
   // ---------- workspace picker ----------
@@ -591,14 +622,19 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   // ---------- halftone ripple lattice ----------
   (function () {
     var cv = $("field"), ctx = cv.getContext("2d"), W, H, dots = [];
-    var SP = 52, R = 1.6;
+    var SP = 30, R = 0.9;
     function build() {
       W = cv.width = innerWidth; H = cv.height = innerHeight;
       dots = [];
-      for (var y = SP / 2; y < H; y += SP)
-        for (var x = SP / 2; x < W; x += SP)
-          dots.push({ x: x + (Math.random() - 0.5) * SP * 0.55, y: y + (Math.random() - 0.5) * SP * 0.55,
-                      p: Math.random() * 6.28, s: 0.5 + Math.random() * 1.1, r: R * (0.5 + Math.random()) });
+      for (var layer = 0; layer < 3; layer++) {
+        var sp = SP * (1 + layer * 0.9), off = layer * sp * 0.37;
+        for (var y = off; y < H; y += sp)
+          for (var x = off; x < W; x += sp)
+            dots.push({ x: x + (Math.random() - 0.5) * sp * 0.6, y: y + (Math.random() - 0.5) * sp * 0.6,
+                        p: Math.random() * 6.28, s: 0.4 + Math.random() * 1.4,
+                        r: R * (0.35 + Math.random() * (layer === 0 ? 0.9 : 1.6)),
+                        o: layer === 0 ? 1 : 0.55 });
+      }
     }
     build(); addEventListener("resize", build);
     function frame(ts) {
@@ -608,10 +644,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       for (var i = 0; i < dots.length; i++) {
         var d = dots[i];
         var w = Math.sin(ts / (1500 / d.s) + d.p) * 0.5 + 0.5; // per-dot phase & speed
-        var r = d.r + w * 2.8;
+        var r = d.r + w * (d.o === 1 ? 1.3 : 2.6);
         ctx.beginPath();
         ctx.arc(d.x, d.y, r, 0, 6.2832);
-        ctx.fillStyle = "rgba(" + base + "," + (0.05 + w * 0.09).toFixed(3) + ")";
+        ctx.fillStyle = "rgba(" + base + "," + ((0.04 + w * 0.08) * d.o).toFixed(3) + ")";
         ctx.fill();
       }
       if (!matchMedia("(prefers-reduced-motion: reduce)").matches) requestAnimationFrame(frame);
