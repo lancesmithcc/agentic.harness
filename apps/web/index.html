@@ -242,7 +242,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   function renderModelPick() {
     var btn = $("modelPick");
     var v = $("pin").value;
-    if (!v) { btn.querySelector(".mp-k").textContent = "AUTO"; btn.querySelector(".mp-v").textContent = "delegation.md"; }
+    if (!v) {
+      btn.querySelector(".mp-k").textContent = "AUTO";
+      var sm = S.settings && S.settings.startModel;
+      btn.querySelector(".mp-v").textContent = sm ? "starts " + (sm.split("/")[1] || sm) : "delegation.md";
+    }
     else { btn.querySelector(".mp-k").textContent = "PIN"; btn.querySelector(".mp-v").textContent = v.split("/")[1] || v; }
   }
   function openModelMenu() {
@@ -386,6 +390,22 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         .then(function (r) { return r.json(); })
         .then(function (s) { S.settings = s; loadStatus(); });
     };
+    var startCard = card();
+    row = el("div", "row");
+    row.appendChild(el("h3", null, "Starting model"));
+    var sel = el("select");
+    sel.className = "panel-input"; sel.style.padding = "6px 10px";
+    var auto = el("option"); auto.value = ""; auto.textContent = "AUTO · delegation.md"; sel.appendChild(auto);
+    (S.models || []).forEach(function (m) { var o = el("option"); o.value = m.id; o.textContent = m.id; if (m.orchestratorOnly) { o.disabled = true; o.textContent += " (gated)"; } sel.appendChild(o); });
+    sel.value = (S.settings.startModel && [...sel.options].some(function (o) { return o.value === S.settings.startModel; })) ? S.settings.startModel : "";
+    row.appendChild(sel); startCard.appendChild(row);
+    startCard.appendChild(el("div", null, "The first mind every new task starts with when you haven\u2019t pinned one in the composer. Fallback chain still applies."));
+    sel.onchange = function () {
+      fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ startModel: sel.value }) })
+        .then(function (r) { return r.json(); }).then(function (v) { S.settings = v; renderModelPick(); });
+    };
+    p.appendChild(startCard);
+
     p.appendChild(astraCard);
 
     p.appendChild(el("div", "nav-section-label", "Model roster"));
@@ -615,6 +635,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       S.status = d;
       S.settings = d.settings || S.settings;
       if (document.documentElement.dataset.theme !== S.settings.theme) applyTheme(S.settings.theme);
+      renderModelPick();
       S.workspace = d.workspace || S.workspace;
       $("wsName").textContent = wsLabel(S.workspace);
       $("wsBtn").title = S.workspace || "~";

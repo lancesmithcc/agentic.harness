@@ -561,3 +561,8 @@ h2, h3 { letter-spacing: .01em; }
 .composer-bar { position: relative; }
 
 @media (prefers-reduced-motion: reduce) { .msg, .card { animation: none !important; } .composer-inner::before { animation: none !important; } }
+
+
+/* light effect + watermark removed by request */
+body, [data-theme="inverse"] body { background-image: none !important; }
+.markmark { display: none !important; }

@@ -59,8 +59,10 @@ interface HarnessSettings {
   customModels: Array<{ id: string; display?: string; role?: string; bestAt: string[]; avoidFor: string[]; coding?: number; reasoning?: number; context?: number; billing?: string }>;
   /** Fleet model ids hidden from routing and the roster. */
   hiddenModels: string[];
+  /** Model used as the main starting model when the composer pin is empty. */
+  startModel: string;
 }
-const DEFAULT_SETTINGS: HarnessSettings = { astraAvailable: false, theme: "gold", workspaces: {}, customModels: [], hiddenModels: [] };
+const DEFAULT_SETTINGS: HarnessSettings = { astraAvailable: false, theme: "gold", workspaces: {}, customModels: [], hiddenModels: [], startModel: "" };
 function loadSettings(): HarnessSettings {
   const path = join(HARNESS_HOME, "settings.json");
   if (!existsSync(path)) return { ...DEFAULT_SETTINGS };
@@ -309,8 +311,9 @@ Bun.serve({
           send({ t: "route", decision: decision0, session: session.sessionId });
           try {
             const routedCtx: OrchestratorContext = { ...ctx, models: pool };
+            const effectivePin = body.model || (settings.startModel && pool.some((m) => m.id === settings.startModel) ? settings.startModel : undefined);
             const result = await askRouted(routedCtx, task, messages, {
-              pinnedModel: body.model || undefined,
+              pinnedModel: effectivePin,
               escalate: body.escalate,
               onEvent: (e) => {
                 if (e.type === "text-delta") send({ t: "delta", text: e.text });
