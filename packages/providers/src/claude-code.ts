@@ -84,8 +84,13 @@ export class ClaudeCodeProvider implements ModelProvider {
   async *generate(request: HarnessRequest): AsyncIterable<HarnessEvent> {
     const model = request.model.includes("/") ? request.model.split("/").slice(1).join("/") : request.model;
     const args = ["-p", flatten(request.messages), "--output-format", "stream-json", "--verbose"];
-    const ALIASES = new Set(["sonnet", "opus", "haiku"]);
-    if (model && model !== "default" && ALIASES.has(model)) args.push("--model", model);
+    // Account-level defaults can reference unavailable models (e.g. "opus 5"
+    // -> 404), so always pass an explicit valid model.
+    const MODEL_MAP: Record<string, string> = {
+      default: "sonnet", sonnet: "sonnet", opus: "opus", haiku: "haiku",
+      "opus-5": "opus",
+    };
+    args.push("--model", MODEL_MAP[model] ?? "sonnet");
 
     const child = spawn("claude", args, {
       env: { ...process.env, CLAUDE_CONFIG_DIR: this.configDir },
