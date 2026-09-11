@@ -419,12 +419,12 @@ textarea.panel-input { resize: vertical; min-height: 74px; width: 100%; }
 
 /* signature action gradient (app-owned) */
 .btn-send, .newsession {
-  background: linear-gradient(120deg, #9fe6c8 0%, #f2a8c4 38%, #7fa8f0 72%, #b49ae0 100%);
-  color: #14142b; border: 0; font-weight: 700;
+  background: var(--accent);
+  color: #171403; border: 0; font-weight: 700;
   background-size: 160% 160%;
   transition: background-position 900ms ease, transform var(--t-fast) cubic-bezier(.22,1,.36,1), box-shadow var(--t-med), filter var(--t-fast);
 }
-.btn-send:hover, .newsession:hover { background-position: 60% 50%; transform: translateY(-1px); filter: saturate(1.15); box-shadow: 0 8px 26px rgba(127,168,240,.35); }
+.btn-send:hover, .newsession:hover { transform: translateY(-1px); filter: saturate(1.1) brightness(1.05); box-shadow: 0 8px 26px rgba(255,223,44,.3); }
 .btn-send:disabled { filter: saturate(.4) opacity(.6); transform: none; }
 .switch input:checked + .knob { background: linear-gradient(120deg, #9fe6c8, #f2a8c4 45%, #7fa8f0 80%, #b49ae0); }
 .switch input:checked ~ .knob, .switch:has(input:checked) { background: transparent; }
