@@ -91,8 +91,18 @@ function rowMatches(task: string, phrases: string[]): boolean {
   });
 }
 
+/**
+ * Quoted/backticked passages are the OBJECT of a task ("classify this:
+ * '...tests...'"), not the instruction — strip them before matching so
+ * embedded words don't steer routing.
+ */
+function stripQuoted(task: string): string {
+  return task.replace(/(['"`])[^'"`\n]{3,}\1/g, "$1…$1");
+}
+
 export function route(input: RouteInput): RoutingDecision {
   const { task, models, health, delegation } = input;
+  const matchText = stripQuoted(task);
   const reason: string[] = [];
 
   // Manual pin: respect it, build fallbacks around it.
@@ -120,7 +130,7 @@ export function route(input: RouteInput): RoutingDecision {
     reason.push(`pinned model ${input.pinnedModel} not in fleet; routing normally`);
   }
 
-  const classification = classifyTask(task, { contextTokens: input.contextTokens });
+  const classification = classifyTask(matchText, { contextTokens: input.contextTokens });
   const category = classification.category;
   reason.push(...classification.signals.map((s) => `signal: ${s}`));
 
@@ -156,7 +166,7 @@ export function route(input: RouteInput): RoutingDecision {
       const target = resolveModelRef(row.model, models);
       if (!target || !ordered.includes(target)) continue;
       const isDefaultWorker = row === starredRow && (category === "general-coding" || category === "unknown");
-      if (rowMatches(task, row.bestFor) || isDefaultWorker) {
+      if (rowMatches(matchText, row.bestFor) || isDefaultWorker) {
         const idx = ordered.indexOf(target);
         if (idx > 0) {
           ordered.splice(idx, 1);
@@ -164,7 +174,7 @@ export function route(input: RouteInput): RoutingDecision {
         }
         reason.push(`delegation.md: ${row.model} listed for this kind of work (${row.role})`);
       }
-      if (rowMatches(task, row.avoidFor)) {
+      if (rowMatches(matchText, row.avoidFor)) {
         const idx = ordered.indexOf(target);
         if (idx >= 0 && idx < ordered.length - 1) {
           ordered.splice(idx, 1);

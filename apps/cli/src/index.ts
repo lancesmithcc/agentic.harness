@@ -114,10 +114,15 @@ program
       ? compileContext(task, target, { cwd: process.cwd(), history })
       : [{ role: "user" as const, content: task }];
 
+    const pin = opts.auto ? undefined : opts.model;
     if (!opts.json) {
-      console.error(`→ ${decision0.selected} (${decision0.category}, confidence ${decision0.confidence.toFixed(2)})${decision0.fallbacks.length ? `  fallbacks: ${decision0.fallbacks.join(", ")}` : ""}`);
+      console.error(
+        pin
+          ? `→ pinned ${pin} (auto would pick ${decision0.selected})`
+          : `→ ${decision0.selected} (${decision0.category}, confidence ${decision0.confidence.toFixed(2)})${decision0.fallbacks.length ? `  fallbacks: ${decision0.fallbacks.join(", ")}` : ""}`,
+      );
     }
-    const result = await askRouted(ctx, task, messages, { pinnedModel: opts.auto ? undefined : opts.model, escalate: opts.escalate, onEvent: (e) => {
+    const result = await askRouted(ctx, task, messages, { pinnedModel: pin, escalate: opts.escalate, onEvent: (e) => {
       if (opts.json || e.type !== "text-delta") return;
       process.stdout.write(e.text);
     } });
