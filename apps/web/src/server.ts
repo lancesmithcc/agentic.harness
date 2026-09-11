@@ -330,6 +330,10 @@ Bun.serve({
     }
 
     if (url.pathname === "/api/sessions") return json({ sessions: listSessions(profile) });
+    if (url.pathname === "/api/session") {
+      const store = new SessionStore(profile, url.searchParams.get("id") ?? "");
+      return json({ events: store.all() });
+    }
     if (url.pathname === "/api/usage") return json({ usage: await usageSummary(profile) });
 
     return json({ error: "not found" }, 404);

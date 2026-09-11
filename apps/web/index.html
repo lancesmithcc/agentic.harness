@@ -280,7 +280,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         c.appendChild(row);
         c.appendChild(el("div", null, "Open with: harness session show " + s.id));
         c.style.cursor = "pointer";
-        c.onclick = function () { S.sessionId = s.id; setView("chat"); sysline("resumed session " + s.id, "route"); };
+        c.onclick = function () { loadTranscript(s.id); };
         p.appendChild(c);
       });
       if (!(d.sessions || []).length) p.appendChild(el("div", "empty", "No sessions yet"));
@@ -464,6 +464,26 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     v.appendChild(p);
   }
 
+  function loadTranscript(id) {
+    get("/api/session?id=" + encodeURIComponent(id) + "&" + (S.profile ? "profile=" + S.profile : "")).then(function (d) {
+      S.sessionId = id; feed.textContent = ""; setView("chat");
+      (d.events || []).forEach(function (e) {
+        if (e.kind === "user-message") feed.appendChild(el("div", "msg user", e.text));
+        else if (e.kind === "assistant-text") {
+          var b = el("div", "msg assistant"); b.appendChild(el("div", "pill", e.model));
+          b.appendChild(el("div", null, e.text)); feed.appendChild(b);
+        } else if (e.kind === "routing") sysline("\u2192 " + e.decision.selected + " \u00b7 " + e.decision.category, "route");
+        else if (e.kind === "fallback") sysline("\u21b3 " + e.from + " \u2192 " + e.to, "fallback");
+      });
+      sysline("resumed " + id, "route");
+    });
+  }
+  // rehydrate the most recent conversation on boot
+  get("/api/sessions").then(function (d) {
+    var recent = (d.sessions || []).find(function (s) { return s.events > 1; });
+    if (recent) loadTranscript(recent.id);
+  });
+
   // ---------- workspace picker ----------
   function wsLabel(p) {
     if (!p) return "~";
@@ -577,7 +597,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       dots = [];
       for (var y = SP / 2; y < H; y += SP)
         for (var x = SP / 2; x < W; x += SP)
-          dots.push({ x: x, y: y, p: (x / SP) * 0.6 + (y / SP) * 0.35 });
+          dots.push({ x: x + (Math.random() - 0.5) * SP * 0.55, y: y + (Math.random() - 0.5) * SP * 0.55,
+                      p: Math.random() * 6.28, s: 0.5 + Math.random() * 1.1, r: R * (0.5 + Math.random()) });
     }
     build(); addEventListener("resize", build);
     function frame(ts) {
@@ -586,8 +607,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       ctx.clearRect(0, 0, W, H);
       for (var i = 0; i < dots.length; i++) {
         var d = dots[i];
-        var w = Math.sin(ts / 1400 + d.p * 2.1) * 0.5 + 0.5; // 0..1 wave
-        var r = R + w * 2.4;
+        var w = Math.sin(ts / (1500 / d.s) + d.p) * 0.5 + 0.5; // per-dot phase & speed
+        var r = d.r + w * 2.8;
         ctx.beginPath();
         ctx.arc(d.x, d.y, r, 0, 6.2832);
         ctx.fillStyle = "rgba(" + base + "," + (0.05 + w * 0.09).toFixed(3) + ")";
