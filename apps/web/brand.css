@@ -566,3 +566,4 @@ h2, h3 { letter-spacing: .01em; }
 /* light effect + watermark removed by request */
 body, [data-theme="inverse"] body { background-image: none !important; }
 .markmark { display: none !important; }
+.mp-caret { color: var(--text-faint); font-size: 9px; margin-left: 2px; }

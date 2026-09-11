@@ -62,11 +62,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <div class="composer-inner">
         <textarea id="task" rows="1" placeholder="Give the harness a task — routing follows delegation.md"></textarea>
         <div class="composer-bar">
-          <button class="modelpick" id="modelPick" type="button"><span class="mp-k">AUTO</span><span class="mp-v">delegation.md</span></button>
+          <button class="modelpick" id="modelPick" type="button" title="Choose the model for this task — AUTO routes via delegation.md"><span class="mp-k">AUTO</span><span class="mp-v">delegation.md</span><span class="mp-caret">\u25BE</span></button>
           <div class="modelmenu" id="modelMenu" hidden></div>
           <select id="pin" hidden><option value="">AUTO · delegation.md</option></select>
-          <label class="chk"><input type="checkbox" id="escalate" /> escalate</label>
-          <label class="chk astra-only" hidden><input type="checkbox" id="orchestrator" /> orchestrator job</label>
+          <label class="chk" title="Delegate: if the chosen model fails or rate-limits, the harness continues with the next model in the chain. Uncheck to stay strictly on the selected model."><input type="checkbox" id="delegate" checked /> delegate</label>
+          <label class="chk" title="Escalate: start one tier up the capability ladder — skips local/cheap models so the task opens on a stronger mind."><input type="checkbox" id="escalate" /> escalate</label>
+          <label class="chk astra-only" hidden title="Orchestrator job: marks this call as conducting the fleet (planning/arbitration), which is the only role GPT 6 Astra may fill — and only after its Settings gate is on."><input type="checkbox" id="orchestrator" /> orchestrator job</label>
           <span class="spacer"></span>
           <button class="btn-send" id="send" type="button">Send</button>
           <button class="btn-stop" id="stop" type="button" hidden>Stop</button>
@@ -191,6 +192,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       body: JSON.stringify({
         task: task, model: $("pin").value || undefined, escalate: $("escalate").checked || undefined,
         orchestrator: ($("orchestrator").checked && !$("orchestrator").parentElement.hidden) || undefined,
+        noFallback: !$("delegate").checked || undefined,
         sessionId: S.sessionId || undefined, profile: S.profile || undefined,
       }),
       signal: S.abort.signal,

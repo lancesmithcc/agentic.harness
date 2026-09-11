@@ -281,7 +281,7 @@ Bun.serve({
     }
 
     if (url.pathname === "/api/ask" && req.method === "POST") {
-      const body = (await req.json().catch(() => ({}))) as { task?: string; model?: string; sessionId?: string; escalate?: boolean; orchestrator?: boolean };
+      const body = (await req.json().catch(() => ({}))) as { task?: string; model?: string; sessionId?: string; escalate?: boolean; orchestrator?: boolean; noFallback?: boolean };
       const task = (body.task ?? "").trim();
       if (!task) return json({ error: "task required" }, 400);
 
@@ -315,6 +315,7 @@ Bun.serve({
             const result = await askRouted(routedCtx, task, messages, {
               pinnedModel: effectivePin,
               escalate: body.escalate,
+              noFallback: body.noFallback,
               onEvent: (e) => {
                 if (e.type === "text-delta") send({ t: "delta", text: e.text });
                 else if (e.type === "reasoning-delta") send({ t: "thinking", text: e.text });
