@@ -9,7 +9,7 @@
 
 /* ── 2 · Tokens · GOLD (default) ──────────────────────────────────────────── */
 :root {
-  --bg-tile: url("assets/bg.png");
+  --bg-tile: none;
   --accent: #ffdf2c;
   --accent-soft: #fff694;
   --bg: #0b0a08;
@@ -35,7 +35,7 @@
 
 /* INVERSE */
 [data-theme="inverse"] {
-  --bg-tile: url("assets/bg-light.png");
+  --bg-tile: none;
   --accent: #0020d3;
   --accent-soft: #3d55e8;
   --bg: #eef0fb;
@@ -71,7 +71,10 @@ body {
 }
 
 /* readability veil — dims the geometry tile, keeps surfaces crisp */
-body::before { content: ""; position: fixed; inset: 0; background: rgba(11, 10, 8, .72); pointer-events: none; z-index: -1; }
+body::before { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 0%, transparent 40%, rgba(0,0,0,.28) 100%); }
+[data-theme="inverse"] body::before { background: radial-gradient(120% 90% at 50% 0%, transparent 45%, rgba(16,18,50,.10) 100%); }
+.app { position: relative; z-index: 1; }
 [data-theme="inverse"] body::before,
 body[data-theme="inverse"]::before { background: rgba(238, 240, 251, .72); }
 
@@ -412,3 +415,42 @@ textarea.panel-input { resize: vertical; min-height: 74px; width: 100%; }
 .fsfoot .btn-send { padding: 7px 16px; }
 
 .overlay[hidden] { display: none; }
+
+
+/* signature action gradient (app-owned) */
+.btn-send, .newsession {
+  background: linear-gradient(120deg, #9fe6c8 0%, #f2a8c4 38%, #7fa8f0 72%, #b49ae0 100%);
+  color: #14142b; border: 0; font-weight: 700;
+  background-size: 160% 160%;
+  transition: background-position 900ms ease, transform var(--t-fast) cubic-bezier(.22,1,.36,1), box-shadow var(--t-med), filter var(--t-fast);
+}
+.btn-send:hover, .newsession:hover { background-position: 60% 50%; transform: translateY(-1px); filter: saturate(1.15); box-shadow: 0 8px 26px rgba(127,168,240,.35); }
+.btn-send:disabled { filter: saturate(.4) opacity(.6); transform: none; }
+.switch input:checked + .knob { background: linear-gradient(120deg, #9fe6c8, #f2a8c4 45%, #7fa8f0 80%, #b49ae0); }
+.switch input:checked ~ .knob, .switch:has(input:checked) { background: transparent; }
+
+/* halftone ripple canvas */
+#field { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+
+/* settings: add-model form + row actions */
+.modelform { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 8px; margin-top: 10px; }
+.modelform input, .modelform select { background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  border-radius: 8px; padding: 7px 9px; font: 400 12.5px var(--font); }
+.modelform input:focus, .modelform select:focus { outline: none; border-color: var(--border-strong); }
+.modelform .full { grid-column: 1 / -1; }
+.rowbtn { background: none; border: 1px solid var(--border); color: var(--text-dim); border-radius: 8px;
+  padding: 4px 10px; font: 500 11.5px var(--font); cursor: pointer; transition: all var(--t-fast); }
+.rowbtn:hover { color: var(--fail); border-color: var(--fail); }
+.rowbtn.unhide { color: var(--ok); }
+.rowbtn.unhide:hover { border-color: var(--ok); }
+@media (prefers-reduced-motion: reduce) { .btn-send, .newsession { transition: none; } }
+
+/* inverse field: blue-dominated action gradient — a touch of mint, lavender, pink */
+[data-theme="inverse"] .btn-send,
+[data-theme="inverse"] .newsession {
+  background: linear-gradient(120deg, #b9e6da 0%, #6f9df0 26%, #3f6df0 54%, #5570e8 72%, #9d9cf0 88%, #efb9d2 100%);
+  color: #0c1440;
+}
+[data-theme="inverse"] .btn-send:hover,
+[data-theme="inverse"] .newsession:hover { box-shadow: 0 8px 26px rgba(63,109,240,.4); }
+[data-theme="inverse"] .switch input:checked + .knob { background: linear-gradient(120deg, #b9e6da, #3f6df0 55%, #9d9cf0 85%, #efb9d2); }

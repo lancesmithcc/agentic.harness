@@ -16,6 +16,7 @@ FIRST VIEWPORT: left rail (brand, new session, nav, profile+theme) + conversatio
 FORM: user-pinned Claude Code-style operator shell; seed: pinned-brand extension of the DeepHarness web client.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 -->
+<canvas id="field" aria-hidden="true"></canvas>
 <div class="app" id="app" data-busy="0">
   <aside class="rail">
     <div class="brand">
@@ -140,18 +141,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   }
 
   // ---------- chat ----------
-  var feed;
+  var feed = el("div"); // survives view switches — conversation history persists
   function chatPage() {
     var page = el("div", "chatpage");
-    feed = el("div");
     page.appendChild(feed);
-    if (!feed.dataset.welcomed) {
-      var w = el("div", "msg assistant");
-      w.appendChild(el("div", "pill", "lancesmith.cc harness"));
-      w.appendChild(el("div", null, "One agent environment, many minds. Ask anything — I will name the mind I chose and why. Routing, fallback and escalation follow delegation.md."));
-      feed.appendChild(w);
-      feed.dataset.welcomed = "1";
-    }
     return page;
   }
   function sysline(text, cls) { feed.appendChild(el("div", "sys " + (cls || ""), text)); feed.lastChild.scrollIntoView({ block: "end" }); }
@@ -363,8 +356,40 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     p.appendChild(el("div", "nav-section-label", "Model roster"));
     var byId = {};
     (S.meta.models || []).forEach(function (m) { byId[m.id] = m; });
+    // add-model form
+    var form = card();
+    form.appendChild(el("h3", null, "Add a model"));
+    form.appendChild(el("div", null, "Register a model on an existing provider (e.g. openrouter/<id>). It joins routing immediately."));
+    var grid = el("div", "modelform");
+    function inp(ph) { var i = el("input"); i.type = "text"; i.placeholder = ph; return i; }
+    var fId = inp("provider/model (openrouter/qwen-coder)"), fDisp = inp("display name"), fRole = inp("delegate role");
+    var fBest = inp("best at (comma separated)"), fAvoid = inp("avoid for (comma separated)");
+    var fCoding = inp("coding 0-10"), fReason = inp("reasoning 0-10"), fCtx = inp("context (k tokens)");
+    var fBill = el("select");
+    ["api", "coding-plan", "subscription", "local"].forEach(function (b) { var o = el("option"); o.value = o.textContent = b; fBill.appendChild(o); });
+    fBill.value = "api";
+    var addBtn = el("button", "btn-send"); addBtn.textContent = "Add"; addBtn.style.justifySelf = "start"; addBtn.style.padding = "8px 18px";
+    grid.appendChild(fId); grid.appendChild(fDisp); grid.appendChild(fRole);
+    grid.appendChild(fBest); grid.appendChild(fCoding); grid.appendChild(fReason);
+    grid.appendChild(fCtx); grid.appendChild(fAvoid); grid.appendChild(fBill);
+    var msg = el("div", null); grid.appendChild(msg); grid.appendChild(el("span")); grid.appendChild(addBtn);
+    form.appendChild(grid);
+    addBtn.onclick = function () {
+      if (!/^[a-z0-9_-]+\/[a-z0-9_.-]+$/i.test(fId.value.trim())) { msg.textContent = "id must be provider/model"; return; }
+      fetch("/api/models" + qs(), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+        id: fId.value.trim(), display: fDisp.value.trim() || undefined, role: fRole.value.trim() || undefined,
+        bestAt: fBest.value ? fBest.value.split(",").map(function (s) { return s.trim(); }).filter(Boolean) : [],
+        avoidFor: fAvoid.value ? fAvoid.value.split(",").map(function (s) { return s.trim(); }).filter(Boolean) : [],
+        coding: parseInt(fCoding.value, 10) || undefined, reasoning: parseInt(fReason.value, 10) || undefined,
+        context: fCtx.value ? parseInt(fCtx.value, 10) * 1000 : undefined, billing: fBill.value,
+      }) }).then(function (r) { return r.json(); }).then(function (d) {
+        msg.textContent = d.error || "added ✓"; if (!d.error) { loadStatus(); }
+      });
+    };
+    p.appendChild(form);
+
     var seen = {};
-    function modelCard(id, caps, orchestratorOnly, dormant) {
+    function modelCard(id, caps, orchestratorOnly, dormant, custom) {
       seen[id] = true;
       var meta = byId[id] || byId[id.toLowerCase()] || {};
       var c = el("div", "card modelrow");
@@ -396,12 +421,35 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         meta.bestAt.forEach(function (x) { f.appendChild(el("span", "tag", x)); });
         c.appendChild(f);
       }
+      var actions = el("div", "row");
+      actions.style.marginTop = "8px";
+      var rm = el("button", "rowbtn", custom ? "remove" : "hide");
+      rm.onclick = function () {
+        fetch("/api/models" + qs(), { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: id, custom: !!custom }) })
+          .then(function (r) { return r.json(); }).then(function (d) { if (!d.error) loadStatus(); });
+      };
+      actions.appendChild(rm);
+      c.appendChild(actions);
       p.appendChild(c);
     }
-    (S.models || []).forEach(function (m) { modelCard(m.id, m.caps, m.orchestratorOnly, false); });
+    (S.models || []).forEach(function (m) { modelCard(m.id, m.caps, m.orchestratorOnly, false, m.custom); });
     (S.meta.models || []).forEach(function (m) {
-      if (!seen[m.id]) modelCard(m.id, m.caps || {}, m.orchestratorOnly, true);
+      if (!seen[m.id]) modelCard(m.id, m.caps || {}, m.orchestratorOnly, true, true);
     });
+    // hidden models can be restored
+    if ((S.status && S.status.hiddenModels || []).length) {
+      p.appendChild(el("div", "nav-section-label", "Hidden"));
+      S.status.hiddenModels.forEach(function (id) {
+        var c = card(), row = el("div", "row");
+        row.appendChild(el("h3", null, id));
+        var un = el("button", "rowbtn unhide", "restore");
+        un.onclick = function () {
+          fetch("/api/models" + qs(), { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: id, unhide: true }) })
+            .then(function (r) { return r.json(); }).then(function (d) { if (!d.error) loadStatus(); });
+        };
+        row.appendChild(un); c.appendChild(row); p.appendChild(c);
+      });
+    }
 
     p.appendChild(el("div", "nav-section-label", "delegation.md"));
     var dg = (S.status && S.status.delegation) || { rows: [] };
@@ -494,7 +542,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       pin.textContent = "";
       var auto = el("option"); auto.value = ""; auto.textContent = "AUTO · delegation.md"; pin.appendChild(auto);
       S.models = [];
-      (d.providers || []).forEach(function (p) {
+      (d.providers || []).concat((d.providersExtras || []).length ? [{ id: "custom", ok: true, detail: "registered models (provider key may be missing)", models: d.providersExtras }] : []).forEach(function (p) {
         var chip = el("span", "chip " + (p.ok ? "ok" : "fail"));
         chip.appendChild(el("span", "dot"));
         chip.appendChild(el("span", null, p.id));
@@ -519,6 +567,36 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       if (S.view === "settings") renderView();
     });
   }
+
+  // ---------- halftone ripple lattice ----------
+  (function () {
+    var cv = $("field"), ctx = cv.getContext("2d"), W, H, dots = [];
+    var SP = 52, R = 1.6;
+    function build() {
+      W = cv.width = innerWidth; H = cv.height = innerHeight;
+      dots = [];
+      for (var y = SP / 2; y < H; y += SP)
+        for (var x = SP / 2; x < W; x += SP)
+          dots.push({ x: x, y: y, p: (x / SP) * 0.6 + (y / SP) * 0.35 });
+    }
+    build(); addEventListener("resize", build);
+    function frame(ts) {
+      var gold = document.documentElement.dataset.theme !== "inverse";
+      var base = gold ? "255,223,44" : "0,32,211";
+      ctx.clearRect(0, 0, W, H);
+      for (var i = 0; i < dots.length; i++) {
+        var d = dots[i];
+        var w = Math.sin(ts / 1400 + d.p * 2.1) * 0.5 + 0.5; // 0..1 wave
+        var r = R + w * 2.4;
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, r, 0, 6.2832);
+        ctx.fillStyle = "rgba(" + base + "," + (0.05 + w * 0.09).toFixed(3) + ")";
+        ctx.fill();
+      }
+      if (!matchMedia("(prefers-reduced-motion: reduce)").matches) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  })();
 
   get("/api/meta").then(function (d) {
     S.meta = d; S.verbs = (d.verbs || []).length ? d.verbs : ["Crystallizing"];
