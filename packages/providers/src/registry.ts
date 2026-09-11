@@ -13,6 +13,7 @@ import { ZAIProvider } from "./zai.ts";
 import { KimiProvider } from "./kimi.ts";
 import { MiniMaxProvider } from "./minimax.ts";
 import { OpenRouterProvider } from "./openrouter.ts";
+import { OpenAIProvider } from "./openai.ts";
 
 export interface Fleet {
   profile: string;
@@ -26,6 +27,7 @@ const API_PROVIDER_FACTS: Record<string, { envVar: string; make: (key: string | 
   kimi: { envVar: "KIMI_API_KEY", make: (k) => new KimiProvider(k) },
   minimax: { envVar: "MINIMAX_API_KEY", make: (k) => new MiniMaxProvider(k) },
   openrouter: { envVar: "OPENROUTER_API_KEY", make: (k) => new OpenRouterProvider(k) },
+  openai: { envVar: "OPENAI_KEY", make: (k) => new OpenAIProvider(k) },
 };
 
 export async function buildFleet(profileName?: string): Promise<Fleet> {

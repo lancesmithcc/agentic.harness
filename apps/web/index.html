@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="en" data-theme="gold">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>lancesmith.cc harness</title>
+<link rel="icon" href="/assets/sriyantra.png" />
+<link rel="stylesheet" href="/brand.css" />
+</head>
+<body>
+<!--
+THESIS: a model-orchestration cockpit — Claude Code's earned familiarity, worn in the lancesmith.cc world (gold Sri Yantra on charcoal; inverse deep-blue on light). Refuses the generic dark-chat default.
+OWN-WORLD: Poppins voice, tiled bg field under a readability veil, gold accent system #ffdf2c/#fff694 (inverse #0020d3/#00096b), sriyantra mark that breathes while the fleet thinks.
+STORY: the operator asks; the harness names the mind it chose, shows it thinking in the hypersentient register, and falls back live; the fleet is managed in place.
+FIRST VIEWPORT: left rail (brand, new session, nav, profile+theme) + conversation column with fleet chips up top; composer anchors the bottom, AUTO routing implied.
+FORM: user-pinned Claude Code-style operator shell; seed: pinned-brand extension of the DeepHarness web client.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+<div class="app" id="app" data-busy="0">
+  <aside class="rail">
+    <div class="brand">
+      <img src="/assets/sriyantra.png" id="brandMark" alt="" width="40" height="40" />
+      <div><div class="name">lancesmith.cc</div><div class="sub">Harness</div></div>
+    </div>
+    <button class="newsession" id="newSession">New session</button>
+    <nav class="nav" id="nav">
+      <div class="nav-section-label">Workspace</div>
+      <button class="nav-item active" data-view="chat" type="button">Conversation</button>
+      <button class="nav-item" data-view="routines" type="button">Routines</button>
+      <button class="nav-item" data-view="artifacts" type="button">Artifacts</button>
+      <div class="nav-section-label">Fleet</div>
+      <button class="nav-item" data-view="skills" type="button">Skills</button>
+      <button class="nav-item" data-view="tools" type="button">Tools &amp; MCP</button>
+      <div class="nav-section-label">System</div>
+      <button class="nav-item" data-view="settings" type="button">Settings</button>
+    </nav>
+    <div class="rail-footer">
+      <span class="profile-pill" id="profilePill">home</span>
+      <button class="theme-toggle" id="themeToggle" title="Invert the field" type="button">
+        <img id="themeMark" src="/assets/sriyantra-light.png" alt="" width="18" height="18" />
+      </button>
+    </div>
+  </aside>
+
+  <section class="main">
+    <header class="topbar">
+      <button class="ws-btn" id="wsBtn" type="button" title="Choose working folder">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.5 4.2c0-.7.6-1.3 1.3-1.3h3.1l1.4 1.6h5.9c.7 0 1.3.6 1.3 1.3v6.7c0 .7-.6 1.3-1.3 1.3H2.8c-.7 0-1.3-.6-1.3-1.3V4.2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        <span id="wsName">~</span>
+      </button>
+      <span class="crumb" id="crumb">Conversation</span>
+      <div class="fleet-chips" id="chips"></div>
+    </header>
+    <div id="view"></div>
+
+    <footer class="composer" id="composer">
+      <div class="composer-inner">
+        <textarea id="task" rows="1" placeholder="Give the harness a task — routing follows delegation.md"></textarea>
+        <div class="composer-bar">
+          <select id="pin"><option value="">AUTO · delegation.md</option></select>
+          <label class="chk"><input type="checkbox" id="escalate" /> escalate</label>
+          <label class="chk astra-only" hidden><input type="checkbox" id="orchestrator" /> orchestrator job</label>
+          <span class="spacer"></span>
+          <button class="btn-send" id="send" type="button">Send</button>
+          <button class="btn-stop" id="stop" type="button" hidden>Stop</button>
+        </div>
+      </div>
+    </footer>
+  </section>
+</div>
+
+<div class="overlay" id="fsOverlay" hidden>
+  <div class="fsdialog">
+    <h3>Choose a working folder</h3>
+    <div class="fscrumb" id="fsCrumb"></div>
+    <div class="fslist" id="fsList"></div>
+    <div class="fsfoot">
+      <button class="ghost" id="fsHome" type="button">Home</button>
+      <span class="fspath" id="fsPath"></span>
+      <span class="spacer"></span>
+      <button class="ghost" id="fsCancel" type="button">Cancel</button>
+      <button class="btn-send" id="fsChoose" type="button">Choose this folder</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var S = { profile: null, sessionId: null, busy: false, abort: null, verbs: [], verbTimer: null,
+            models: [], settings: { astraAvailable: false, theme: "gold" }, view: "chat",
+            status: null, meta: {}, workspace: null, fsDir: null };
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  function clean(s) { return String(s || "").replace(/\*\*/g, "").replace(/⭐/g, "").trim(); }
+  function qs() { return S.profile ? "?profile=" + encodeURIComponent(S.profile) : ""; }
+  function get(url) { return fetch(url).then(function (r) { return r.json(); }); }
+
+  // ---------- theme ----------
+  function applyTheme(t) {
+    document.documentElement.dataset.theme = t;
+    $("themeMark").src = t === "gold" ? "/assets/sriyantra-light.png" : "/assets/sriyantra.png";
+    $("brandMark").src = t === "gold" ? "/assets/sriyantra.png" : "/assets/sriyantra-light.png";
+    S.settings.theme = t;
+  }
+  $("themeToggle").onclick = function () {
+    var t = S.settings.theme === "gold" ? "inverse" : "gold";
+    applyTheme(t);
+    fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ theme: t }) }).catch(function () {});
+  };
+
+  // ---------- navigation ----------
+  function setView(v) {
+    S.view = v;
+    document.querySelectorAll(".nav-item").forEach(function (n) { n.classList.toggle("active", n.dataset.view === v); });
+    $("crumb").textContent = v === "chat" ? "Conversation" : v.charAt(0).toUpperCase() + v.slice(1);
+    $("composer").style.display = v === "chat" ? "" : "none";
+    renderView();
+  }
+  document.querySelectorAll(".nav-item").forEach(function (n) {
+    n.onclick = function () { setView(n.dataset.view); };
+  });
+  $("newSession").onclick = function () { S.sessionId = null; setView("chat"); $("task").focus(); };
+
+  function renderView() {
+    var v = $("view");
+    v.textContent = "";
+    if (S.view === "chat") v.appendChild(chatPage());
+    else if (S.view === "routines") routinesPage(v);
+    else if (S.view === "artifacts") artifactsPage(v);
+    else if (S.view === "skills") skillsPage(v);
+    else if (S.view === "tools") toolsPage(v);
+    else if (S.view === "settings") settingsPage(v);
+  }
+
+  // ---------- chat ----------
+  var feed;
+  function chatPage() {
+    var page = el("div", "chatpage");
+    feed = el("div");
+    page.appendChild(feed);
+    if (!feed.dataset.welcomed) {
+      var w = el("div", "msg assistant");
+      w.appendChild(el("div", "pill", "lancesmith.cc harness"));
+      w.appendChild(el("div", null, "One agent environment, many minds. Ask anything — I will name the mind I chose and why. Routing, fallback and escalation follow delegation.md."));
+      feed.appendChild(w);
+      feed.dataset.welcomed = "1";
+    }
+    return page;
+  }
+  function sysline(text, cls) { feed.appendChild(el("div", "sys " + (cls || ""), text)); feed.lastChild.scrollIntoView({ block: "end" }); }
+  function thinkingLine() {
+    var line = el("div", "thinking-line");
+    var mark = el("img", "thinking-mark"); mark.src = $("brandMark").src;
+    var txt = el("span", null, S.verbs[0] || "Crystallizing");
+    line.appendChild(mark); line.appendChild(txt);
+    feed.appendChild(line);
+    var i = 0;
+    S.verbTimer = setInterval(function () { i = (i + 1) % S.verbs.length; txt.textContent = S.verbs[i]; }, 2200);
+    return { line: line, stop: function () { clearInterval(S.verbTimer); line.remove(); } };
+  }
+
+  function send() {
+    var task = $("task").value.trim();
+    if (!task || S.busy) return;
+    setView("chat");
+    setBusy(true);
+    $("task").value = "";
+    feed.appendChild(el("div", "msg user", task));
+
+    var think = thinkingLine();
+    var bubble = el("div", "msg assistant");
+    var pill = el("div", "pill", "consulting the field");
+    var thinkBox = el("details", null);
+    var tsum = el("summary", null, "reasoning"); var tbody = el("div", null);
+    thinkBox.appendChild(tsum); thinkBox.appendChild(tbody);
+    var body = el("div");
+    bubble.appendChild(pill); bubble.appendChild(thinkBox); bubble.appendChild(body);
+    feed.appendChild(bubble);
+    body.scrollIntoView({ block: "end" });
+
+    state = { acc: "" };
+    S.abort = new AbortController();
+    fetch("/api/ask", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        task: task, model: $("pin").value || undefined, escalate: $("escalate").checked || undefined,
+        orchestrator: ($("orchestrator").checked && !$("orchestrator").parentElement.hidden) || undefined,
+        sessionId: S.sessionId || undefined, profile: S.profile || undefined,
+      }),
+      signal: S.abort.signal,
+    }).then(function (res) {
+      if (!res.ok) return res.json().then(function (e) { throw new Error(e.error || res.status); });
+      var reader = res.body.getReader(), dec = new TextDecoder(), buf = "";
+      function pump() {
+        return reader.read().then(function (r) {
+          if (r.done) return;
+          buf += dec.decode(r.value, { stream: true });
+          var parts = buf.split("\n\n"); buf = parts.pop();
+          parts.forEach(function (p) {
+            if (p.indexOf("data:") !== 0) return;
+            try { handle(JSON.parse(p.slice(5).trim()), pill, tbody, body); } catch (e) {}
+          });
+          return pump();
+        });
+      }
+      return pump();
+    }).catch(function (e) {
+      if (e.name !== "AbortError") sysline("✗ " + e.message, "error");
+    }).then(function () {
+      think.stop(); setBusy(false); loadUsageChips();
+      if (!body.textContent && !state.acc) body.textContent = "(no output)";
+    });
+  }
+  var state = { acc: "" };
+  function handle(evt, pill, thinkBody, body) {
+    if (evt.t === "route") {
+      S.sessionId = evt.session;
+      var d = evt.decision;
+      pill.textContent = "→ " + d.selected;
+      sysline("→ " + d.selected + " · " + d.category + " " + (d.confidence || 0).toFixed(2), "route");
+    } else if (evt.t === "delta") { state.acc += evt.text; body.textContent += evt.text; }
+    else if (evt.t === "thinking") { thinkBody.textContent += evt.text; thinkBody.parentElement.open = true; }
+    else if (evt.t === "fallback") {
+      sysline("↳ " + evt.from + " unavailable (" + evt.cause + ") — continuing with " + evt.to, "fallback");
+      pill.textContent = "→ " + evt.to;
+    } else if (evt.t === "done") {
+      body.textContent = evt.text; pill.textContent = evt.model;
+    } else if (evt.t === "error") { sysline("✗ " + evt.message, "error"); }
+  }
+  function setBusy(b) {
+    S.busy = b; $("app").dataset.busy = b ? "1" : "0";
+    $("send").hidden = b; $("stop").hidden = !b;
+  }
+  $("send").onclick = send;
+  $("stop").onclick = function () { if (S.abort) S.abort.abort(); };
+  $("task").addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+
+  // ---------- panels ----------
+  function panel(title, lede) {
+    var p = el("div", "panel");
+    p.appendChild(el("h2", null, title));
+    if (lede) p.appendChild(el("div", "lede", lede));
+    return p;
+  }
+  function card() { return el("div", "card"); }
+
+  function routinesPage(v) {
+    var p = panel("Routines", "Repeatable multi-step flows across the fleet. Run one to start a session with its first step.");
+    get("/api/routines" + qs()).then(function (d) {
+      (d.routines || []).forEach(function (r) {
+        var c = card();
+        var row = el("div", "row");
+        row.appendChild(el("h3", null, r.name));
+        var run = el("button", "btn-send"); run.textContent = "Run"; run.style.padding = "5px 14px";
+        row.appendChild(run); c.appendChild(row);
+        var ol = el("div"); (r.steps || []).forEach(function (s, i) { ol.appendChild(el("div", null, (i + 1) + ". " + s)); });
+        c.appendChild(ol);
+        if (r.model) c.appendChild(el("div", null, "pinned: " + r.model));
+        run.onclick = function () {
+          setView("chat");
+          $("task").value = r.steps[0] || r.name;
+          $("task").focus();
+        };
+        p.appendChild(c);
+      });
+      if (!(d.routines || []).length) p.appendChild(el("div", "empty", "No routines yet — add them to ~/.deepharness/routines.json"));
+    });
+    v.appendChild(p);
+  }
+
+  function artifactsPage(v) {
+    var p = panel("Artifacts", "Session histories — every routing decision, model call and usage record, kept provider-neutral.");
+    get("/api/sessions" + qs()).then(function (d) {
+      (d.sessions || []).slice(0, 30).forEach(function (s) {
+        var c = card(), row = el("div", "row");
+        row.appendChild(el("h3", null, s.id));
+        row.appendChild(el("span", "tag", s.events + " events · " + s.modified.slice(0, 16).replace("T", " ")));
+        c.appendChild(row);
+        c.appendChild(el("div", null, "Open with: harness session show " + s.id));
+        c.style.cursor = "pointer";
+        c.onclick = function () { S.sessionId = s.id; setView("chat"); sysline("resumed session " + s.id, "route"); };
+        p.appendChild(c);
+      });
+      if (!(d.sessions || []).length) p.appendChild(el("div", "empty", "No sessions yet"));
+    });
+    v.appendChild(p);
+  }
+
+  function skillsPage(v) {
+    var p = panel("Skills", "Agent skills and MCP servers discovered on this machine.");
+    get("/api/skills" + qs()).then(function (d) {
+      var groups = { "agent-skill": [], "mcp": [] };
+      (d.skills || []).forEach(function (s) { (groups[s.type] || []).push(s); });
+      Object.keys(groups).forEach(function (g) {
+        p.appendChild(el("div", "nav-section-label", g + " · " + groups[g].length));
+        groups[g].forEach(function (s) {
+          var c = card(), row = el("div", "row");
+          row.appendChild(el("h3", null, s.name));
+          row.appendChild(el("span", "tag", s.source));
+          c.appendChild(row);
+          if (s.description) c.appendChild(el("div", null, s.description));
+          p.appendChild(c);
+        });
+      });
+    });
+    v.appendChild(p);
+  }
+
+  function toolsPage(v) {
+    var p = panel("Tools & MCP", "CLI executables discovered in $PATH, available to the fleet.");
+    get("/api/tools").then(function (d) {
+      (d.tools || []).forEach(function (t) {
+        var c = card(), row = el("div", "row");
+        row.appendChild(el("h3", null, (t.available ? "" : "✗ ") + t.name));
+        row.appendChild(el("span", "tag", t.version || (t.available ? "available" : "missing")));
+        c.appendChild(row);
+        p.appendChild(c);
+      });
+    });
+    v.appendChild(p);
+  }
+
+  function settingsPage(v) {
+    var p = panel("Settings", "Theme, the Astra gate, and the model roster with each mind's delegate role.");
+
+    var themeCard = card();
+    var row = el("div", "row");
+    row.appendChild(el("h3", null, "Inverse field (blue mode)"));
+    var sw = el("label", "switch");
+    var cb = el("input"); cb.type = "checkbox"; cb.checked = S.settings.theme === "inverse";
+    var kn = el("span", "knob");
+    sw.appendChild(cb); sw.appendChild(kn); row.appendChild(sw);
+    themeCard.appendChild(row);
+    themeCard.appendChild(el("div", null, "Gold on charcoal ↔ deep blue on light. Also lives in the rail footer."));
+    cb.onchange = function () { $("themeToggle").click(); };
+    p.appendChild(themeCard);
+
+    var astraCard = card();
+    row = el("div", "row");
+    row.appendChild(el("h3", null, "GPT 6 Astra — master orchestrator"));
+    sw = el("label", "switch");
+    cb = el("input"); cb.type = "checkbox"; cb.checked = S.settings.astraAvailable;
+    kn = el("span", "knob");
+    sw.appendChild(cb); sw.appendChild(kn); row.appendChild(sw);
+    astraCard.appendChild(row);
+    astraCard.appendChild(el("div", null, "Extremely token-hungry. When on, Astra may be chosen only for orchestrator jobs (composer checkbox); never for worker tasks."));
+    cb.onchange = function () {
+      fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ astraAvailable: cb.checked }) })
+        .then(function (r) { return r.json(); })
+        .then(function (s) { S.settings = s; loadStatus(); });
+    };
+    p.appendChild(astraCard);
+
+    p.appendChild(el("div", "nav-section-label", "Model roster"));
+    var byId = {};
+    (S.meta.models || []).forEach(function (m) { byId[m.id] = m; });
+    var seen = {};
+    function modelCard(id, caps, orchestratorOnly, dormant) {
+      seen[id] = true;
+      var meta = byId[id] || byId[id.toLowerCase()] || {};
+      var c = el("div", "card modelrow");
+      var r2 = el("div", "row");
+      r2.appendChild(el("h3", null, meta.display || id));
+      var tags = el("span");
+      if (caps.billing) tags.appendChild(el("span", "tag", caps.billing));
+      if (caps.local) tags.appendChild(el("span", "tag", "local · private"));
+      if (orchestratorOnly) tags.appendChild(el("span", "tag orchestrator-only", "orchestrator only"));
+      if (dormant) tags.appendChild(el("span", "tag", "dormant — add key"));
+      r2.appendChild(tags);
+      c.appendChild(r2);
+      if (meta.role) c.appendChild(el("div", null, meta.role));
+      var bars = el("div", "grid2");
+      [["coding", caps.coding], ["reasoning", caps.reasoning]].forEach(function (pair) {
+        if (pair[1] == null) return;
+        var b = el("div");
+        b.appendChild(el("div", null, pair[0] + " · " + pair[1]));
+        var track = el("div", "cap"); var fill = el("i");
+        fill.style.width = (pair[1] * 10) + "%";
+        track.appendChild(fill); b.appendChild(track);
+        bars.appendChild(b);
+      });
+      c.appendChild(bars);
+      if (caps.context) c.appendChild(el("div", null, "context " + Math.round(caps.context / 1000) + "k" + (meta.notes ? " · " + meta.notes : "")));
+      if (meta.bestAt) {
+        var f = el("div");
+        f.appendChild(el("span", "tag", "best at"));
+        meta.bestAt.forEach(function (x) { f.appendChild(el("span", "tag", x)); });
+        c.appendChild(f);
+      }
+      p.appendChild(c);
+    }
+    (S.models || []).forEach(function (m) { modelCard(m.id, m.caps, m.orchestratorOnly, false); });
+    (S.meta.models || []).forEach(function (m) {
+      if (!seen[m.id]) modelCard(m.id, m.caps || {}, m.orchestratorOnly, true);
+    });
+
+    p.appendChild(el("div", "nav-section-label", "delegation.md"));
+    var dg = (S.status && S.status.delegation) || { rows: [] };
+    dg.rows.forEach(function (r) {
+      var c = card();
+      c.appendChild(el("h3", null, clean(r.model)));
+      c.appendChild(el("div", null, clean(r.role)));
+      c.appendChild(el("div", null, "best: " + r.bestFor.map(clean).slice(0, 4).join(", ")));
+      c.appendChild(el("div", null, "avoid: " + r.avoidFor.map(clean).slice(0, 3).join(", ")));
+      p.appendChild(c);
+    });
+    v.appendChild(p);
+  }
+
+  // ---------- workspace picker ----------
+  function wsLabel(p) {
+    if (!p) return "~";
+    var home = p.split("/");
+    var name = home[home.length - 1] || p;
+    return name.length > 22 ? name.slice(0, 20) + "…" : name;
+  }
+  function fsBrowse(dir) {
+    get("/api/fs/list?dir=" + encodeURIComponent(dir || "~")).then(function (d) {
+      if (d.error) return;
+      S.fsDir = d.dir;
+      $("fsPath").textContent = d.dir;
+      var crumb = $("fsCrumb"); crumb.textContent = "";
+      var parts = d.dir.split("/").filter(Boolean);
+      var acc = "";
+      parts.forEach(function (part, i) {
+        acc += "/" + part;
+        (function (target) {
+          var b = el("button", "ghost crumb-seg", part);
+          b.onclick = function () { fsBrowse(target); };
+          crumb.appendChild(b);
+        })(acc);
+        if (i < parts.length - 1) crumb.appendChild(el("span", null, "/"));
+      });
+      var list = $("fsList"); list.textContent = "";
+      if (d.parent) {
+        var up = el("button", "fsrow up"); up.textContent = "…";
+        up.onclick = function () { fsBrowse(d.parent); };
+        list.appendChild(up);
+      }
+      (d.entries || []).forEach(function (name) {
+        var row = el("button", "fsrow");
+        row.appendChild(el("span", null, name));
+        row.onclick = function () { fsBrowse(d.dir + "/" + name); };
+        row.ondblclick = function () { chooseFolder(d.dir + "/" + name); };
+        list.appendChild(row);
+      });
+      if (!(d.entries || []).length) list.appendChild(el("div", "empty", "No folders here"));
+    });
+  }
+  function chooseFolder(path) {
+    fetch("/api/workspace" + qs(), { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: path }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.error) { $("fsPath").textContent = d.error; return; }
+        S.workspace = d.workspace;
+        $("wsName").textContent = wsLabel(d.workspace);
+        $("wsBtn").title = d.workspace;
+        $("fsOverlay").hidden = true;
+        S.sessionId = null;
+        setView("chat");
+        sysline("workspace → " + d.workspace, "route");
+        loadStatus();
+      });
+  }
+  $("wsBtn").onclick = function () { fsBrowse(S.workspace || "~"); $("fsOverlay").hidden = false; };
+  $("fsCancel").onclick = function () { $("fsOverlay").hidden = true; };
+  $("fsHome").onclick = function () { fsBrowse("~"); };
+  $("fsChoose").onclick = function () { chooseFolder(S.fsDir); };
+  $("fsOverlay").addEventListener("click", function (e) { if (e.target === this) this.hidden = true; });
+
+  // ---------- status / boot ----------
+  function loadUsageChips() { loadStatus(); }
+  function loadStatus() {
+    get("/api/status" + qs()).then(function (d) {
+      S.status = d;
+      S.settings = d.settings || S.settings;
+      if (document.documentElement.dataset.theme !== S.settings.theme) applyTheme(S.settings.theme);
+      S.workspace = d.workspace || S.workspace;
+      $("wsName").textContent = wsLabel(S.workspace);
+      $("wsBtn").title = S.workspace || "~";
+      $("profilePill").textContent = d.profile;
+      var chips = $("chips"); chips.textContent = "";
+      var pin = $("pin");
+      var prev = pin.value;
+      pin.textContent = "";
+      var auto = el("option"); auto.value = ""; auto.textContent = "AUTO · delegation.md"; pin.appendChild(auto);
+      S.models = [];
+      (d.providers || []).forEach(function (p) {
+        var chip = el("span", "chip " + (p.ok ? "ok" : "fail"));
+        chip.appendChild(el("span", "dot"));
+        chip.appendChild(el("span", null, p.id));
+        var mini = el("div", "mini");
+        (p.models || []).forEach(function (m) {
+          S.models.push(m);
+          var row = el("div", "row");
+          var nm = el("span", null, m.id);
+          row.appendChild(nm);
+          if (m.orchestratorOnly) row.appendChild(el("span", "tag orchestrator-only", "orchestrator"));
+          mini.appendChild(row);
+          var o = el("option"); o.value = m.id; o.textContent = m.id;
+          if (m.orchestratorOnly && !S.settings.astraAvailable) o.disabled = true;
+          pin.appendChild(o);
+        });
+        if (!p.ok) mini.insertBefore(el("div", null, p.detail), mini.firstChild);
+        chip.appendChild(mini);
+        chips.appendChild(chip);
+      });
+      pin.value = prev && [...pin.options].some(function (o) { return o.value === prev; }) ? prev : "";
+      document.querySelector(".chk.astra-only").hidden = !S.settings.astraAvailable;
+      if (S.view === "settings") renderView();
+    });
+  }
+
+  get("/api/meta").then(function (d) {
+    S.meta = d; S.verbs = (d.verbs || []).length ? d.verbs : ["Crystallizing"];
+    S.settings = d.settings || S.settings;
+    applyTheme(S.settings.theme);
+  }).catch(function () { S.verbs = ["Crystallizing"]; });
+  loadStatus();
+  setView("chat");
+})();
+</script>
+</body>
+</html>

@@ -7,3 +7,4 @@ export { ZAIProvider } from "./zai.ts";
 export { KimiProvider } from "./kimi.ts";
 export { MiniMaxProvider } from "./minimax.ts";
 export { OpenRouterProvider } from "./openrouter.ts";
+export { OpenAIProvider, ORCHESTRATOR_ONLY_MODELS } from "./openai.ts";

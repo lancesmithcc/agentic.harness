@@ -39,6 +39,7 @@ const SEED_CAPS: Record<string, ModelCapabilities> = {
   sonnet: { coding: 10, reasoning: 10, tools: true, vision: true, billing: "subscription", context: 200000 },
   opus: { coding: 10, reasoning: 10, tools: true, vision: true, billing: "subscription", context: 200000 },
   haiku: { coding: 8, reasoning: 7, tools: true, vision: true, billing: "subscription", context: 200000 },
+  "opus-5": { coding: 10, reasoning: 10, tools: true, vision: true, billing: "subscription", context: 200000, thinking: true },
 };
 
 /** Flatten a conversation into a transcript claude -p can consume. */

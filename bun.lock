@@ -33,6 +33,20 @@
         "commander": "^12.1.0",
       },
     },
+    "apps/web": {
+      "name": "@harness/web",
+      "version": "0.1.0",
+      "dependencies": {
+        "@harness/cli": "workspace:*",
+        "@harness/context": "workspace:*",
+        "@harness/core": "workspace:*",
+        "@harness/providers": "workspace:*",
+        "@harness/router": "workspace:*",
+        "@harness/sessions": "workspace:*",
+        "@harness/skills": "workspace:*",
+        "@harness/tools": "workspace:*",
+      },
+    },
     "packages/context": {
       "name": "@harness/context",
       "version": "0.1.0",
@@ -110,6 +124,8 @@
     "@harness/skills": ["@harness/skills@workspace:packages/skills"],
 
     "@harness/tools": ["@harness/tools@workspace:packages/tools"],
+
+    "@harness/web": ["@harness/web@workspace:apps/web"],
 
     "@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
 

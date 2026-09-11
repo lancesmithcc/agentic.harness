@@ -33,6 +33,11 @@ const SEED_ALIASES: Array<[RegExp, string]> = [
   [/^gemma412b(it)?$/, "local/gemma-4-12b-it"],
   [/^gemma(local)?$/, "local/gemma-4-12b-it"],
   [/^openrouter$/, "openrouter/auto"],
+  [/^gpt56sol$/, "openai/gpt-5.6-sol"],
+  [/^gpt56terra$/, "openai/gpt-5.6-terra"],
+  [/^gpt56luna$/, "openai/gpt-5.6-luna"],
+  [/^claudeopus5$/, "claude-code/opus-5"],
+  [/^gpt6astra$/, "openai/gpt-6-astra"],
 ];
 
 function scoreMatch(nameKey: string, model: Model): number {

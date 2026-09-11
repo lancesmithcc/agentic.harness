@@ -62,7 +62,7 @@ const RULES: Rule[] = [
   {
     category: "office-production",
     weight: 1.5,
-    patterns: [/\b(word|excel|powerpoint|ppt|docx|xlsx|pptx|spreadsheet)\b/i, /\breport draft/i, /\bdeck\b/i, /\bmemo\b/i, /\bbusiness deliverable/i],
+    patterns: [/\b(ms ?word|word docs?|excel|powerpoint|ppt|docx|xlsx|pptx|spreadsheet)\b/i, /\breport draft/i, /\bdeck\b/i, /\bmemo\b/i, /\bbusiness deliverable/i],
   },
   {
     category: "difficult-coding",

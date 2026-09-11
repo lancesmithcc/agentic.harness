@@ -1,0 +1,139 @@
+{
+  "models": [
+    {
+      "id": "openai/gpt-5.6-sol",
+      "provider": "openai",
+      "display": "GPT 5.6 Sol",
+      "role": "Frontier second brain",
+      "bestAt": [
+        "architecture decisions",
+        "hardest bugs",
+        "formal/proof-like reasoning",
+        "peer-level second opinions",
+        "cross-model verification of major work"
+      ],
+      "avoidFor": [
+        "routine coding (cost)",
+        "bulk mechanical generation"
+      ],
+      "caps": {
+        "coding": 10,
+        "reasoning": 10,
+        "vision": true,
+        "tools": true,
+        "context": 400000
+      },
+      "billing": "api",
+      "orchestratorOnly": false,
+      "notes": "Tier-1 frontier; use when the answer must be right."
+    },
+    {
+      "id": "openai/gpt-5.6-terra",
+      "provider": "openai",
+      "display": "GPT 5.6 Terra",
+      "role": "Balanced 5.6 workhorse",
+      "bestAt": [
+        "strong general coding",
+        "long-form writing",
+        "refactors at scale",
+        "spec-to-implementation",
+        "second-draft reviews"
+      ],
+      "avoidFor": [
+        "cheapest-tier mechanical work",
+        "frontier-only proofs"
+      ],
+      "caps": {
+        "coding": 9,
+        "reasoning": 9,
+        "vision": true,
+        "tools": true,
+        "context": 400000
+      },
+      "billing": "api",
+      "orchestratorOnly": false,
+      "notes": "Cheaper than Sol, stronger than Luna."
+    },
+    {
+      "id": "openai/gpt-5.6-luna",
+      "provider": "openai",
+      "display": "GPT 5.6 Luna",
+      "role": "Fast light drafter",
+      "bestAt": [
+        "quick drafts",
+        "high-volume short calls",
+        "naming/brainstorms",
+        "boilerplate",
+        "triage"
+      ],
+      "avoidFor": [
+        "deep reasoning",
+        "long-context synthesis"
+      ],
+      "caps": {
+        "coding": 7,
+        "reasoning": 7,
+        "vision": false,
+        "tools": true,
+        "context": 128000
+      },
+      "billing": "api",
+      "orchestratorOnly": false,
+      "notes": "Speed tier; competes with deepseek-flash on price."
+    },
+    {
+      "id": "claude-code/opus-5",
+      "provider": "claude-code",
+      "display": "Claude Opus 5",
+      "role": "Deep specialist",
+      "bestAt": [
+        "hardest debugging",
+        "nuanced architecture judgment",
+        "long agentic sessions",
+        "careful multi-file edits",
+        "security-sensitive review"
+      ],
+      "avoidFor": [
+        "trivial lookups",
+        "bulk summarization"
+      ],
+      "caps": {
+        "coding": 10,
+        "reasoning": 10,
+        "vision": true,
+        "tools": true,
+        "context": 200000
+      },
+      "billing": "subscription",
+      "orchestratorOnly": false,
+      "notes": "Subscription route via Claude Code."
+    },
+    {
+      "id": "openai/gpt-6-astra",
+      "provider": "openai",
+      "display": "GPT 6 Astra",
+      "role": "Master orchestrator (gated)",
+      "bestAt": [
+        "orchestrating multi-agent pipelines",
+        "decomposing epic tasks",
+        "arbitrating between conflicting model outputs",
+        "long-horizon planning"
+      ],
+      "avoidFor": [
+        "any worker task",
+        "direct implementation",
+        "cheap calls — extremely token-hungry"
+      ],
+      "caps": {
+        "coding": 10,
+        "reasoning": 10,
+        "vision": true,
+        "tools": true,
+        "context": 1000000
+      },
+      "billing": "api",
+      "orchestratorOnly": true,
+      "notes": "ONLY as orchestrator and only when toggled available."
+    }
+  ]
+}
