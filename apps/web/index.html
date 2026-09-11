@@ -629,6 +629,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       $("wsName").textContent = wsLabel(S.workspace);
       $("wsBtn").title = S.workspace || "~";
       $("profilePill").textContent = d.profile;
+      var pills = $("pills"); pills.textContent = "";
+      (d.profiles || []).forEach(function (pr) {
+        var b = el("button", "pill" + (pr === d.profile ? " active" : ""), pr);
+        b.onclick = function () { S.profile = pr; S.sessionId = null; feed.textContent = ""; load(); loadChatList(); };
+        pills.appendChild(b);
+      });
       var chips = $("chips"); chips.textContent = "";
       var pin = $("pin");
       var prev = pin.value;
