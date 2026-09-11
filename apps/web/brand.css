@@ -619,3 +619,18 @@ body, [data-theme="inverse"] body { background-image: none !important; }
 
 .composer-inner::before { pointer-events: none !important; }
 .modelmenu { pointer-events: auto; }
+
+/* light mode: deeper grey scale variation */
+[data-theme="inverse"] .drow { background: #f0f1f6 !important; }
+[data-theme="inverse"] .drow:hover, [data-theme="inverse"] .card:hover { background: #eef0f6 !important; }
+[data-theme="inverse"] .fsdialog { background: #f1f2f7 !important; }
+[data-theme="inverse"] .composer-bar { border-top-color: #dfe2ea !important; }
+[data-theme="inverse"] .chip:hover, [data-theme="inverse"] .modelpick:hover { background: #e6e9f1 !important; }
+[data-theme="inverse"] .msg.user { color: #23283f; }
+[data-theme="inverse"] .sys { color: #6b7090; }
+[data-theme="inverse"] .usage-table td { border-bottom-color: #e3e6ee; }
+[data-theme="inverse"] .card, [data-theme="inverse"] .msg.assistant { border-color: #dfe3ec !important; }
+[data-theme="inverse"] .rail { border-right-color: #dcdfe9 !important; }
+[data-theme="inverse"] .topbar, [data-theme="inverse"] .composer { border-color: #e3e6ee !important; }
+[data-theme="inverse"] .tag { border-color: #d8dce6; color: #555b78; }
+[data-theme="inverse"] .ghost { border-color: #d8dce6; }

@@ -391,6 +391,21 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         .then(function (r) { return r.json(); })
         .then(function (s) { S.settings = s; loadStatus(); });
     };
+    var reasonCard = card();
+    row = el("div", "row");
+    row.appendChild(el("h3", null, "Reasoning output"));
+    sw = el("label", "switch");
+    cb = el("input"); cb.type = "checkbox"; cb.checked = !!S.settings.reasoningOff;
+    kn = el("span", "knob");
+    sw.appendChild(cb); sw.appendChild(kn); row.appendChild(sw);
+    reasonCard.appendChild(row);
+    reasonCard.appendChild(el("div", null, "Off hides the thinking traces models stream before their answer. The models still reason; the transcript stays clean."));
+    cb.onchange = function () {
+      fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ reasoningOff: cb.checked }) })
+        .then(function (r) { return r.json(); }).then(function (v) { S.settings = v; });
+    };
+    p.appendChild(reasonCard);
+
     p.appendChild(astraCard);
 
     p.appendChild(el("div", "nav-section-label", "Model roster"));

@@ -61,8 +61,10 @@ interface HarnessSettings {
   hiddenModels: string[];
   /** Model used as the main starting model when the composer pin is empty. */
   startModel: string;
+  /** Hide reasoning/thinking output in conversations. */
+  reasoningOff: boolean;
 }
-const DEFAULT_SETTINGS: HarnessSettings = { astraAvailable: false, theme: "gold", workspaces: {}, customModels: [], hiddenModels: [], startModel: "" };
+const DEFAULT_SETTINGS: HarnessSettings = { astraAvailable: false, theme: "gold", workspaces: {}, customModels: [], hiddenModels: [], startModel: "", reasoningOff: false };
 function loadSettings(): HarnessSettings {
   const path = join(HARNESS_HOME, "settings.json");
   if (!existsSync(path)) return { ...DEFAULT_SETTINGS };
@@ -318,7 +320,7 @@ Bun.serve({
               noFallback: body.noFallback,
               onEvent: (e) => {
                 if (e.type === "text-delta") send({ t: "delta", text: e.text });
-                else if (e.type === "reasoning-delta") send({ t: "thinking", text: e.text });
+                else if (e.type === "reasoning-delta" && !settings.reasoningOff) send({ t: "thinking", text: e.text });
                 else if (e.type === "usage") send({ t: "usage", usage: e.usage });
               },
             });
