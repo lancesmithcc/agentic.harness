@@ -218,8 +218,11 @@ program
     if (ctx.delegation) {
       const rows = ctx.delegation.rows;
       console.log(`✓ delegation.md valid (${ctx.delegation.sourcePath}; ${rows.length} models, ${ctx.delegation.frontmatter ? "front-matter + " : ""}rows)`);
-      const unresolved = rows.filter((r) => !ctx.models.some((m) => m.id.includes(m.model) && r.model.toLowerCase().replace(/[^a-z0-9]/g, "").includes(m.model.toLowerCase().replace(/[^a-z0-9]/g, ""))));
-      for (const u of unresolved.slice(0, 5)) console.log(`  ⚠ "${u.model}" has no close match in fleet models`);
+      const { resolveModelRef } = await import("@harness/router");
+      for (const r of rows) {
+        const hit = resolveModelRef(r.model, ctx.models);
+        console.log(`  ${hit ? "✓" : "⚠"} ${r.model.padEnd(20)} → ${hit?.id ?? "no match in fleet"}`);
+      }
     } else {
       console.log("✗ delegation.md not found (copy one to ~/.deepharness/delegation.md or .harness/delegation.md)");
     }
