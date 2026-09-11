@@ -246,12 +246,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   // ---------- manual model picker ----------
   function renderModelPick() {
     var btn = $("modelPick");
+    var k = btn.querySelector(".mp-k");
     var v = $("pin").value;
-    if (!v) {
-      btn.querySelector(".mp-k").textContent = "AUTO";
-      var mpv = btn.querySelector(".mp-v"); if (mpv) mpv.textContent = "";
-    }
-    else { btn.querySelector(".mp-k").textContent = "PIN"; btn.querySelector(".mp-v").textContent = v.split("/")[1] || v; }
+    k.textContent = v ? (v.split("/")[1] || v) : "AUTO";
   }
   function openModelMenu() {
     var m = $("modelMenu"); m.textContent = "";
@@ -260,7 +257,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       if (dis) b.classList.add("dis");
       b.appendChild(el("span", "mm-id", label));
       b.appendChild(el("span", "mm-sub", sub));
-      if (!dis) b.onclick = function () { $("pin").value = id; renderModelPick(); m.hidden = true; };
+      if (!dis) b.onclick = function () { m.hidden = true; $("pin").value = id; renderModelPick(); };
       return b;
     };
     m.appendChild(mk("", "AUTO", "smart routing"));
