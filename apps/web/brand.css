@@ -616,3 +616,6 @@ body, [data-theme="inverse"] body { background-image: none !important; }
 .nav-item.active { background: rgba(255,255,255,.05) !important; color: var(--accent); font-weight: 600; }
 [data-theme="inverse"] .nav-item.active { background: #dfe3ee !important; }
 .chatrow.active .chatlabel { font-weight: 600; }
+
+.composer-inner::before { pointer-events: none !important; }
+.modelmenu { pointer-events: auto; }
