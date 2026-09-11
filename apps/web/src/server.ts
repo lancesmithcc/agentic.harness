@@ -105,6 +105,7 @@ const json = (data: unknown, status = 200) => new Response(JSON.stringify(data),
 
 Bun.serve({
   port: PORT,
+  idleTimeout: 255, // SSE streams idle while a CLI adapter waits; Bun default is 10s
   async fetch(req) {
     const url = new URL(req.url);
 
