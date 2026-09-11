@@ -598,3 +598,21 @@ body, [data-theme="inverse"] body { background-image: none !important; }
   background: linear-gradient(120deg, #3f6fe0, #1e3fce);
   border-color: #1e3fce;
 }
+
+/* light mode: a real grey scale, not flat whites */
+[data-theme="inverse"] { --surface: #f3f4f8; --surface-2: #e9ebf2; }
+[data-theme="inverse"] .rail { background: #eceef4 !important; }
+[data-theme="inverse"] .topbar { background: #f6f7fa !important; }
+[data-theme="inverse"] .card, [data-theme="inverse"] .msg.assistant { background: #f2f3f7 !important; }
+[data-theme="inverse"] .composer-inner { background: #edeef4 !important; }
+[data-theme="inverse"] .chatrow:hover, [data-theme="inverse"] .chatrow.active { background: #e2e5ee !important; }
+[data-theme="inverse"] .nav-item:hover, [data-theme="inverse"] .nav-item.active { background: #e2e5ee !important; }
+[data-theme="inverse"] .modelpick, [data-theme="inverse"] .chip { background: #eceef4 !important; }
+[data-theme="inverse"] .fslist { background: #f6f7fa !important; }
+[data-theme="inverse"] .fsrow:hover { background: #e6e8f0 !important; }
+
+/* selected tabs: no left border bar anywhere */
+.nav-item.active, .chatrow.active, .mm-row.sel { box-shadow: none !important; }
+.nav-item.active { background: rgba(255,255,255,.05) !important; color: var(--accent); font-weight: 600; }
+[data-theme="inverse"] .nav-item.active { background: #dfe3ee !important; }
+.chatrow.active .chatlabel { font-weight: 600; }
