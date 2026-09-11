@@ -67,7 +67,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         <div class="composer-bar">
           <button class="modelpick" id="modelPick" type="button" title="Choose the model for this task"><span class="mp-k">AUTO</span><span class="mp-caret">▾</span></button>
           <div class="modelmenu" id="modelMenu" hidden></div>
-          <select id="pin" hidden><option value="">AUTO · delegation.md</option></select>
+          <select id="pin" hidden><option value="">AUTO</option></select>
           <label class="chk" title="Delegate: if the chosen model fails or rate-limits, the harness continues with the next model in the chain. Uncheck to stay strictly on the selected model."><input type="checkbox" id="delegate" checked /> delegate</label>
           <label class="chk" title="Escalate: start one tier up the capability ladder — skips local/cheap models so the task opens on a stronger mind."><input type="checkbox" id="escalate" /> escalate</label>
           <label class="chk astra-only" hidden title="Orchestrator job: marks this call as conducting the fleet (planning/arbitration), which is the only role GPT 6 Astra may fill — and only after its Settings gate is on."><input type="checkbox" id="orchestrator" /> orchestrator job</label>
@@ -500,7 +500,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       });
     }
 
-    p.appendChild(el("div", "nav-section-label", "delegation.md"));
+    p.appendChild(el("div", "nav-section-label", "Routing rules"));
     var dg = (S.status && S.status.delegation) || { rows: [] };
     dg.rows.forEach(function (r) {
       var c = card();
@@ -632,7 +632,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       var pin = $("pin");
       var prev = pin.value;
       pin.textContent = "";
-      var auto = el("option"); auto.value = ""; auto.textContent = "AUTO · delegation.md"; pin.appendChild(auto);
+      var auto = el("option"); auto.value = ""; auto.textContent = "AUTO"; pin.appendChild(auto);
       S.models = [];
       (d.providers || []).concat((d.providersExtras || []).length ? [{ id: "custom", ok: true, detail: "registered models (provider key may be missing)", models: d.providersExtras }] : []).forEach(function (p) {
         var chip = el("span", "chip " + (p.ok ? "ok" : "fail"));
