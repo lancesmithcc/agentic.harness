@@ -19,7 +19,7 @@ const seed: Record<string, ModelCapabilities> = {
   },
 };
 
-export const ORCHESTRATOR_ONLY_MODELS = new Set(["openai/gpt-6-astra"]);
+export const ORCHESTRATOR_ONLY_MODELS = new Set(["codex/gpt-6-astra", "openai/gpt-6-astra"]);
 
 export class OpenAIProvider extends OpenAICompatProvider {
   constructor(apiKey?: string | null) {

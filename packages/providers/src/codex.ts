@@ -25,6 +25,11 @@ import { harnessError } from "./claude-code.ts";
 const SEED_CAPS: Record<string, ModelCapabilities> = {
   "gpt-5.5": { coding: 10, reasoning: 10, tools: true, vision: true, billing: "subscription", context: 400000 },
   "gpt-5.5-codex": { coding: 10, reasoning: 9, tools: true, billing: "subscription", context: 400000 },
+  "gpt-5.6-sol": { coding: 10, reasoning: 10, tools: true, vision: true, billing: "subscription", context: 400000, thinking: true },
+  "gpt-5.6-terra": { coding: 9, reasoning: 9, tools: true, vision: true, billing: "subscription", context: 400000 },
+  "gpt-5.6-luna": { coding: 7, reasoning: 7, tools: true, billing: "subscription", context: 128000 },
+  // Orchestrator-only; gated by settings, never a worker.
+  "gpt-6-astra": { coding: 10, reasoning: 10, tools: true, vision: true, billing: "subscription", context: 1000000, thinking: true, longContext: true },
   default: { coding: 10, reasoning: 10, tools: true, billing: "subscription", context: 400000 },
 };
 

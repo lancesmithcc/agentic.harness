@@ -249,7 +249,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     var v = $("pin").value;
     k.textContent = v ? (v.split("/")[1] || v) : "AUTO";
   }
-  function openModelMenu() {
+  function buildModelMenu() {
     var m = $("modelMenu"); m.textContent = "";
     var mk = function (id, label, sub, dis) {
       var b = el("button", "mm-row" + (id === $("pin").value ? " sel" : ""));
@@ -271,7 +271,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     });
     m.hidden = false;
   }
-  $("modelPick").onclick = function (e) { e.stopPropagation(); var m = $("modelMenu"); if (m.hidden) openModelMenu(); else m.hidden = true; };
+  $("modelPick").onclick = function (e) {
+    e.stopPropagation();
+    var m = $("modelMenu");
+    if (!m.hidden) { m.hidden = true; return; }
+    if (!(S.models || []).length) loadStatus().then(buildModelMenu).catch(function () { buildModelMenu(); });
+    else buildModelMenu();
+  };
   document.addEventListener("click", function (e) { if (!e.target.closest(".modelpick") && !e.target.closest(".modelmenu")) $("modelMenu").hidden = true; });
   renderModelPick();
   $("send").onclick = send;
@@ -635,7 +641,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   // ---------- status / boot ----------
   function loadUsageChips() { loadStatus(); }
   function loadStatus() {
-    get("/api/status" + qs()).then(function (d) {
+    return get("/api/status" + qs()).then(function (d) {
       try {
       S.status = d;
       S.settings = d.settings || S.settings;
