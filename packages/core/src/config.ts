@@ -9,7 +9,12 @@ import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 
-export const HARNESS_HOME = process.env.HARNESS_HOME ?? join(homedir(), ".deepharness");
+/** Resolve at the storage boundary so isolated callers can supply a home. */
+export function getHarnessHome(): string {
+  return process.env.HARNESS_HOME ?? join(homedir(), ".deepharness");
+}
+// Legacy path remains compatible; the product identity is agentic.harness.
+export const HARNESS_HOME = getHarnessHome();
 
 export const SecretRefSchema = z.string().refine((s) => s.startsWith("keychain://") || s.startsWith("env://"), {
   message: "secret must be keychain://<name> or env://<NAME>",

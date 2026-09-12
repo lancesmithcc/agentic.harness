@@ -1,0 +1,40 @@
+# Self-evolve workflow
+
+Self-evolve lets an agent change the local `agentic.harness` source tree when the user explicitly asks to change the harness. It is separate from ordinary workspace work.
+
+Published release code belongs on GitHub `main`. Self-evolve checkpoints belong on the app-managed self-evolve branch. The app control plane creates the before and after commits, records rollback commits, and syncs that branch to `lancesmithcc/agentic.harness` asynchronously. The agent never changes Git refs, the index, remotes, credentials, commits, resets, or pushes.
+
+## Before enabling it
+
+1. Set **Settings → Self-evolve** on and select an `agentic.harness` source checkout.
+2. Set Agent file access to **Workspace** or **Full**. **Read-only always wins**, even when Self-evolve is on.
+3. Ask for an explicit harness change, such as “fix harness history” or “change agentic.harness UI.” Ordinary project requests remain in the selected project workspace.
+
+With Workspace access, a self-evolve task uses the harness source root as its native agent workspace. This permits source edits without granting unrestricted filesystem access. A normal project and the harness source cannot both be writable through DeepSeek’s single native workspace boundary; use an appropriate tool-capable provider or run the self-evolve task from the source root.
+
+## Checkpoints, sync, and rollback
+
+Each self-evolve card shows its local checkpoint and affected files; session records retain both before and after commits. Settings shows the latest synchronized GitHub commit. A rollback is append-only: it creates a new rollback commit rather than moving branch history backwards.
+
+Restoring a card is local and file-aware. It restores only files still matching the card’s later version, and skips files changed by a newer self-evolve card or by the user. Review skipped files before making another change.
+
+The app queues branch synchronization after a checkpoint. A failed or offline sync remains pending and retries later; it does not discard the local checkpoint. Inspect Settings → Self-evolve sync state before relying on a remote copy.
+
+To recover on another machine, clone the repository and fetch the self-evolve branch recorded by the relevant card. Check out or compare that branch with `main`, then use the recorded before, after, or rollback commit. Do not force-push or rewrite the branch while pending checkpoint sync exists.
+
+## Applying changes
+
+Source-run web sessions can reload HTML/CSS in the browser; server, provider, router, and package changes require restarting the Bun harness server.
+
+The packaged macOS desktop app serves bundled UI files and a compiled server. Source edits do not change a running installed app. Rebuild, install, and relaunch the desktop bundle using [the desktop build guide](../apps/desktop/README.md):
+
+```bash
+cd apps/desktop
+bun install
+export PATH="$HOME/.cargo/bin:$PATH"
+bun run build
+```
+
+Copy the resulting app bundle to `/Applications` as described in that guide, then launch the new bundle. Keep the previous installed app until the rebuilt one opens successfully.
+
+While Self-evolve is enabled, writable agent turns share one source checkpoint lock. A second such turn receives a retryable busy response so two agents cannot mix their source changes. Ordinary text replies do not modify source.

@@ -9,7 +9,8 @@
  * account is authenticated independently via `harness auth claude`.
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, symlinkSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { HARNESS_HOME } from "@harness/core";
 import type {
@@ -63,6 +64,15 @@ export class ClaudeCodeProvider implements ModelProvider {
   constructor(profile: string) {
     this.configDir = join(HARNESS_HOME, "profiles", profile, "claude");
     if (!existsSync(this.configDir)) mkdirSync(this.configDir, { recursive: true });
+    // Share the user's Claude Code commands + skills (e.g. /gpt-image) with the
+    // isolated profile. Auth stays separate; nothing is copied.
+    for (const sub of ["commands", "skills"]) {
+      const target = join(homedir(), ".claude", sub);
+      const link = join(this.configDir, sub);
+      if (existsSync(target) && !existsSync(link)) {
+        try { symlinkSync(target, link); } catch { /* exists or not permitted */ }
+      }
+    }
   }
 
   async models(): Promise<Model[]> {
@@ -83,6 +93,10 @@ export class ClaudeCodeProvider implements ModelProvider {
 
   async *generate(request: HarnessRequest): AsyncIterable<HarnessEvent> {
     const model = request.model.includes("/") ? request.model.split("/").slice(1).join("/") : request.model;
+    if (request.signal?.aborted) {
+      yield { type: "error", error: harnessError("aborted", "claude request cancelled before start", { provider: this.id, model }), fatal: true };
+      return;
+    }
     const args = ["-p", flatten(request.messages), "--output-format", "stream-json", "--verbose"];
     // Account-level defaults can reference unavailable models (e.g. "opus 5"
     // -> 404), so always pass an explicit valid model.
@@ -91,21 +105,37 @@ export class ClaudeCodeProvider implements ModelProvider {
       "opus-5": "opus",
     };
     args.push("--model", MODEL_MAP[model] ?? "sonnet");
+    // Autonomy: workspace = auto-accept file edits in the working folder;
+    // full = no permission prompts (shell + MCP tools). Default stays read-only.
+    if (request.access === "full") args.push("--dangerously-skip-permissions");
+    else if (request.access === "workspace") args.push("--permission-mode", "acceptEdits");
+    if (request.mcpConfig && existsSync(request.mcpConfig)) args.push("--mcp-config", request.mcpConfig);
+    for (const dir of request.addDirs ?? []) if (existsSync(dir)) args.push("--add-dir", dir);
 
     const child = spawn("claude", args, {
+      cwd: request.cwd && existsSync(request.cwd) ? request.cwd : undefined,
       env: { ...process.env, CLAUDE_CONFIG_DIR: this.configDir },
       stdio: ["ignore", "pipe", "pipe"],
     });
+    const closed = new Promise<number | null>((resolve) => child.once("close", (code) => resolve(code)));
     const started = Date.now();
     let full = "";
     let buf = "";
     let sawResult = false;
+    let cancelled = false;
     const stderr: string[] = [];
     // CLI subprocesses must never hang the fallback chain: hard ceiling.
     const killer = setTimeout(() => {
+      cancelled = true;
       try { child.kill("SIGKILL"); } catch { /* already gone */ }
-    }, 90_000);
+    }, request.timeoutMs ?? 90_000);
     child.on("exit", () => clearTimeout(killer));
+    const onAbort = () => {
+      cancelled = true;
+      try { child.kill("SIGTERM"); } catch { /* already gone */ }
+      setTimeout(() => { if (child.exitCode === null) try { child.kill("SIGKILL"); } catch { /* already gone */ } }, 1_000).unref();
+    };
+    request.signal?.addEventListener("abort", onAbort, { once: true });
 
     child.stderr.on("data", (d: Buffer) => {
       if (stderr.length < 20) stderr.push(d.toString());
@@ -113,12 +143,14 @@ export class ClaudeCodeProvider implements ModelProvider {
 
     const lineStream = async function* (proc: typeof child): AsyncGenerator<string> {
       let pending = "";
+      const decoder = new TextDecoder();
       for await (const chunk of proc.stdout) {
-        pending += chunk.toString();
+        pending += decoder.decode(chunk as Uint8Array, { stream: true });
         const lines = pending.split("\n");
         pending = lines.pop() ?? "";
         for (const line of lines) if (line.trim()) yield line;
       }
+      pending += decoder.decode();
       if (pending.trim()) yield pending;
     };
 
@@ -185,7 +217,12 @@ export class ClaudeCodeProvider implements ModelProvider {
           yield { type: "done", finishReason: evt.subtype as string | undefined, text: resultText };
         }
       }
-      if (!sawResult) {
+      const exitCode = await closed;
+      if (cancelled) {
+        yield { type: "error", error: harnessError("aborted", "claude request cancelled", { provider: this.id, model }), fatal: true };
+      } else if (exitCode !== 0 && !sawResult) {
+        yield { type: "error", error: harnessError("provider-error", `claude exited ${exitCode}${stderr.length ? `; stderr: ${stderr.join("").slice(0, 400)}` : ""}`, { provider: this.id, model, retryable: true }), fatal: true };
+      } else if (!sawResult) {
         const errText = stderr.join("").slice(0, 400);
         const code: HarnessError["code"] = /login|auth|credential|api key/i.test(errText) ? "auth" : "provider-error";
         yield {
@@ -200,11 +237,14 @@ export class ClaudeCodeProvider implements ModelProvider {
     } catch (err) {
       yield {
         type: "error",
-        error: harnessError("unknown", `claude CLI failed: ${(err as Error).message}; stderr: ${stderr.join("").slice(0, 400)}`, {
+        error: harnessError(cancelled ? "aborted" : "unknown", `claude CLI failed: ${(err as Error).message}; stderr: ${stderr.join("").slice(0, 400)}`, {
           provider: this.id,
         }),
         fatal: true,
       };
+    } finally {
+      clearTimeout(killer);
+      request.signal?.removeEventListener("abort", onAbort);
     }
   }
 

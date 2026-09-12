@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>agentic.harness</title>
+<style>
+  @font-face { font-family: "Agentic Display"; src: url("fonts/display.woff2") format("woff2"); font-weight: 300 900; font-display: block; }
+  :root { --bg: #0A0908; --text: #F5F2EE; --dim: #9A9690; --accent: #FB923C; --fail: #F87171; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #d5d1c1; --text: #1A1817; --dim: #5C5852; --accent: #C2410C; --fail: #DC2626; }
+  }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid; place-items: center; background: var(--bg); color: var(--text);
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+    -webkit-user-select: none; user-select: none; cursor: default;
+  }
+  .drag { position: fixed; inset: 0 0 auto 0; height: 44px; }
+  main { text-align: center; padding: 0 24px; }
+  .mark {
+    font: 560 64px/1 "Agentic Display", Georgia, serif; letter-spacing: -0.02em;
+    font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
+  }
+  .mark span { display: inline-block; color: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+  .status { margin-top: 20px; color: var(--dim); }
+  .error { margin: 20px auto 0; max-width: 460px; color: var(--fail); white-space: pre-wrap; -webkit-user-select: text; user-select: text; }
+  @keyframes pulse { 50% { opacity: .45; transform: scale(.8); } }
+  @media (prefers-reduced-motion: reduce) { .mark span { animation: none; } }
+</style>
+<script>
+  // called by the app shell if the harness server can't start
+  window.showError = function (message) {
+    document.getElementById("status").hidden = true;
+    var box = document.getElementById("error");
+    box.hidden = false;
+    box.textContent = message;
+    document.querySelector(".mark span").style.animation = "none";
+  };
+</script>
+</head>
+<body>
+  <div class="drag" data-tauri-drag-region></div>
+  <main>
+    <div class="mark">agentic<span>.</span>harness</div>
+    <div class="status" id="status">Starting the harness…</div>
+    <div class="error" id="error" hidden></div>
+  </main>
+</body>
+</html>

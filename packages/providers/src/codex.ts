@@ -61,6 +61,10 @@ export class CodexProvider implements ModelProvider {
 
   async *generate(request: HarnessRequest): AsyncIterable<HarnessEvent> {
     const model = request.model.includes("/") ? request.model.split("/").slice(1).join("/") : request.model;
+    if (request.signal?.aborted) {
+      yield { type: "error", error: harnessError("aborted", "codex request cancelled before start", { provider: this.id, model }), fatal: true };
+      return;
+    }
     const prompt = request.messages
       .map((m) =>
         m.role === "system"
@@ -69,7 +73,12 @@ export class CodexProvider implements ModelProvider {
       )
       .join("\n\n");
 
-    const args = ["exec", "--json", "--skip-git-repo-check", "--sandbox", this.sandbox];
+    // Autonomy follows the request; MCP servers come from the profile's
+    // config.toml (the harness manages a block there from Tools & MCP).
+    const sandbox = request.access === "full" ? "danger-full-access" : request.access === "workspace" ? "workspace-write" : this.sandbox;
+    const args = ["exec", "--json", "--skip-git-repo-check", "--sandbox", sandbox];
+    if (request.cwd && existsSync(request.cwd)) args.push("--cd", request.cwd);
+    for (const dir of request.addDirs ?? []) if (existsSync(dir)) args.push("--add-dir", dir);
     if (model && model !== "default") args.push("-m", model);
     args.push(prompt);
 
@@ -77,66 +86,76 @@ export class CodexProvider implements ModelProvider {
       env: { ...process.env, CODEX_HOME: this.codexHome },
       stdio: ["ignore", "pipe", "pipe"],
     });
+    const closed = new Promise<void>((resolve) => child.once("close", () => resolve()));
     const started = Date.now();
     let full = "";
     let sawError = false;
+    let sawDone = false;
+    let cancelled = false;
+    let exitCode: number | null = null;
     const stderr: string[] = [];
     // CLI subprocesses must never hang the fallback chain: hard ceiling.
     const killer = setTimeout(() => {
+      cancelled = true;
       try { child.kill("SIGKILL"); } catch { /* already gone */ }
-    }, 90_000);
+    }, request.timeoutMs ?? 90_000);
     child.on("exit", () => clearTimeout(killer));
+    const onAbort = () => {
+      cancelled = true;
+      try { child.kill("SIGTERM"); } catch { /* already gone */ }
+      // Some child CLIs ignore SIGTERM while waiting on a transport. Reap it.
+      setTimeout(() => { if (child.exitCode === null) try { child.kill("SIGKILL"); } catch { /* already gone */ } }, 1_000).unref();
+    };
+    request.signal?.addEventListener("abort", onAbort, { once: true });
+    child.on("exit", (code) => { exitCode = code; });
     child.stderr.on("data", (d: Buffer) => {
       if (stderr.length < 20) stderr.push(d.toString());
     });
 
     try {
+      const decoder = new TextDecoder();
       let pending = "";
+      const parseLine = (line: string): HarnessEvent[] => {
+        if (!line.trim()) return [];
+        let evt: Record<string, unknown>;
+        try { evt = JSON.parse(line) as Record<string, unknown>; } catch { return []; }
+        const type = evt.type as string;
+        if (type === "item.completed") {
+          const item = evt.item as { id?: string; type?: string; text?: string; changes?: Array<{ path?: string; kind?: string }> } | undefined;
+          if (item?.type === "agent_message" && item.text) { full += item.text; return [{ type: "text-delta", text: item.text }]; }
+          if (item?.type === "file_change" && item.changes?.length) return [{ type: "tool-call", id: item.id ?? "file_change", name: "file_change", arguments: JSON.stringify({ changes: item.changes }) }];
+        } else if (type === "turn.completed") {
+          sawDone = true;
+          const raw = evt.usage as { input_tokens?: number; output_tokens?: number } | undefined;
+          const usage: UsageReport | null = raw ? { inputTokens: raw.input_tokens, outputTokens: raw.output_tokens, totalTokens: (raw.input_tokens ?? 0) + (raw.output_tokens ?? 0), billing: "subscription" } : null;
+          return [
+            ...(usage ? [{ type: "usage" as const, usage }] : []),
+            { type: "model-call", model, provider: this.id, latencyMs: Date.now() - started },
+            { type: "done", finishReason: "stop", text: full },
+          ];
+        } else if (type === "turn.failed" || type === "error") {
+          sawError = true;
+          const msg = String(evt.error ?? evt.message ?? "codex error");
+          const code = /auth|login|401/i.test(msg) ? "auth" : /rate|429|quota/i.test(msg) ? "rate-limit" : "provider-error";
+          return [{ type: "error", error: harnessError(code, msg, { provider: this.id, model }), fatal: code === "auth" }];
+        }
+        return [];
+      };
       for await (const chunk of child.stdout) {
-        pending += chunk.toString();
+        pending += decoder.decode(chunk as Uint8Array, { stream: true });
         const lines = pending.split("\n");
         pending = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          let evt: Record<string, unknown>;
-          try {
-            evt = JSON.parse(line) as Record<string, unknown>;
-          } catch {
-            continue;
-          }
-          const type = evt.type as string;
-          if (type === "item.completed") {
-            const item = evt.item as { type?: string; text?: string } | undefined;
-            if (item?.type === "agent_message" && item.text) {
-              full += item.text;
-              yield { type: "text-delta", text: item.text };
-            }
-          } else if (type === "item.started" || type === "item.updated") {
-            // streaming fragments; final text arrives via item.completed
-          } else if (type === "turn.completed") {
-            const usageIn = evt.usage as
-              | { input_tokens?: number; output_tokens?: number; cached_input_tokens?: number }
-              | undefined;
-            const usage: UsageReport | null = usageIn
-              ? {
-                  inputTokens: (usageIn.input_tokens ?? 0) + (usageIn.cached_input_tokens ?? 0),
-                  outputTokens: usageIn.output_tokens,
-                  totalTokens: (usageIn.input_tokens ?? 0) + (usageIn.output_tokens ?? 0),
-                  billing: "subscription",
-                }
-              : null;
-            if (usage) yield { type: "usage", usage };
-            yield { type: "model-call", model, provider: this.id, latencyMs: Date.now() - started };
-            yield { type: "done", finishReason: "stop", text: full };
-          } else if (type === "error") {
-            sawError = true;
-            const msg = String(evt.message ?? "codex error");
-            const code = /auth|login|401/i.test(msg) ? "auth" : /rate|429|quota/i.test(msg) ? "rate-limit" : "provider-error";
-            yield { type: "error", error: harnessError(code, msg, { provider: this.id, model }), fatal: code === "auth" };
-          }
-        }
+        for (const line of lines) for (const event of parseLine(line)) yield event;
       }
-      if (!sawError && !full) {
+      pending += decoder.decode();
+      for (const event of parseLine(pending)) yield event;
+      await closed;
+      if (cancelled) {
+        yield { type: "error", error: harnessError("aborted", "codex request cancelled", { provider: this.id, model }), fatal: true };
+      } else if (!sawError && (!sawDone || exitCode !== 0)) {
+        const detail = stderr.join("").slice(0, 400);
+        yield { type: "error", error: harnessError("provider-error", `codex exited ${exitCode ?? "before completion"}${detail ? `; stderr: ${detail}` : ""}`, { provider: this.id, model, retryable: true }), fatal: true };
+      } else if (!sawError && !full) {
         const errText = stderr.join("").slice(0, 400);
         const code: HarnessError["code"] = /login|auth|not logged in/i.test(errText) ? "auth" : "provider-error";
         yield {
@@ -150,10 +169,12 @@ export class CodexProvider implements ModelProvider {
       }
     } catch (err) {
       yield {
-        type: "error",
-        error: harnessError("unknown", `codex CLI failed: ${(err as Error).message}`, { provider: this.id }),
+        type: "error", error: harnessError(cancelled ? "aborted" : "unknown", `codex CLI failed: ${(err as Error).message}`, { provider: this.id }),
         fatal: true,
       };
+    } finally {
+      clearTimeout(killer);
+      request.signal?.removeEventListener("abort", onAbort);
     }
   }
 

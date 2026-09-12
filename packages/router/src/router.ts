@@ -22,6 +22,8 @@ export interface RouteInput {
   pinnedModel?: string;
   /** Force escalation one step up the ladder. */
   escalate?: boolean;
+  /** Require an adapter that can actually execute tools/files for this task. */
+  requiresTools?: boolean;
 }
 
 const CATEGORY_CAP_KEY: Partial<Record<TaskCategory, "coding" | "reasoning" | "summarization">> = {
@@ -64,7 +66,19 @@ function capabilityRank(models: Model[], category: TaskCategory): Model[] {
 
 /** Light stemmer so "refactors" matches "refactor", "debugging" matches "debug". */
 function stem(w: string): string {
-  return w.replace(/(ing|ies|es|s)$/, (m, _g, offset) => (w.length - offset > 3 ? "" : m));
+  if (w.endsWith("ies") && w.length > 6) return `${w.slice(0, -3)}y`;
+  if (w.endsWith("ing") && w.length > 6) {
+    const base = w.slice(0, -3);
+    return base.length > 2 && base.at(-1) === base.at(-2) ? base.slice(0, -1) : base;
+  }
+  if (w.endsWith("es") && w.length > 5) return w.slice(0, -2);
+  if (w.endsWith("s") && w.length > 4) return w.slice(0, -1);
+  return w;
+}
+
+/** Text-only chat adapters may draft code but cannot apply or verify it. */
+function taskRequiresTools(task: string): boolean {
+  return /\b(?:implement|fix|patch|refactor|modify|edit|update|run(?:ning)?\s+(?:tests?|build|command)|test(?:ing)?|build|deploy|commit)\b/i.test(task);
 }
 
 /** Generic words that must never match a delegation phrase on their own. */
@@ -104,12 +118,16 @@ export function route(input: RouteInput): RoutingDecision {
   const { task, models, health, delegation } = input;
   const matchText = stripQuoted(task);
   const reason: string[] = [];
+  const needsTools = input.requiresTools ?? taskRequiresTools(task);
 
   // Manual pin: respect it, build fallbacks around it.
   if (input.pinnedModel) {
     const pinned = models.find((m) => m.id === input.pinnedModel || m.model === input.pinnedModel);
     if (pinned) {
-      const ranked = capabilityRank(models.filter((m) => m.id !== pinned.id), "general-coding");
+      if (needsTools && pinned.capabilities?.tools !== true) {
+        return { task, category: "unknown", selected: "none", reason: [`${pinned.id} provides text replies only; select an agent with file/tool execution for this task`], fallbacks: [], confidence: 1, classifiedBy: "manual-pin" };
+      }
+      const ranked = capabilityRank(models.filter((m) => m.id !== pinned.id && health.get(m.provider)?.ok !== false && (!needsTools || m.capabilities?.tools === true)), "general-coding");
       // Diverse fallbacks: one model per provider before siblings.
       const diverse: string[] = [];
       const siblings: string[] = [];
@@ -140,10 +158,9 @@ export function route(input: RouteInput): RoutingDecision {
   // 1) Explicit front-matter routing map wins when present for the category.
   const fmList = delegation?.frontmatter?.routing?.[category];
   if (fmList?.length) {
-    const resolved = fmList
-      .map((ref) => resolveModelRef(ref, models))
-      .filter((m): m is Model => m !== null);
-    const unresolved = fmList.filter((ref, i) => !resolved[i]);
+    const resolvedPairs = fmList.map((ref) => ({ ref, model: resolveModelRef(ref, models) }));
+    const resolved = resolvedPairs.map((x) => x.model).filter((m): m is Model => m !== null);
+    const unresolved = resolvedPairs.filter((x) => x.model === null).map((x) => x.ref);
     const rest = capabilityRank(
       models.filter((m) => !resolved.some((r) => r.id === m.id)),
       category,
@@ -205,6 +222,14 @@ export function route(input: RouteInput): RoutingDecision {
   }
   for (const m of unavailable) reason.push(`${m.id} unavailable (${health.get(m.provider)?.detail})`);
 
+  if (needsTools) {
+    const executable = available.filter((m) => m.capabilities?.tools === true);
+    available = executable;
+    reason.push(executable.length
+      ? "task requires file/tool execution; text-only adapters excluded"
+      : "task requires file/tool execution, but no executable adapter is available");
+  }
+
   // 6) Escalation: prefer the strongest tier — local and low-capability
   //    models move behind stronger ones (bounded reorder, never a loop).
   if (input.escalate && available.length > 1) {
@@ -246,7 +271,7 @@ export function route(input: RouteInput): RoutingDecision {
       diverse.push(m.id);
     }
   }
-  const fallbacks = [...diverse.slice(0, 3), ...siblings.slice(0, 1), ...unavailable.slice(0, 1).map((m) => m.id)];
+  const fallbacks = [...diverse.slice(0, 3), ...siblings.slice(0, 1)];
 
   return {
     task,

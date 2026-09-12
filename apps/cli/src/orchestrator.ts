@@ -6,15 +6,18 @@
  */
 import type {
   HarnessEvent,
+  HarnessRequest,
   Model,
   ModelProvider,
   ProviderHealth,
   RoutingDecision,
+  TurnOutcome,
 } from "@harness/core";
 import { route, resolveModelRef } from "@harness/router";
 import type { DelegationDoc } from "@harness/router";
 import type { SessionStore } from "@harness/sessions";
 import { recordUsage } from "@harness/sessions";
+import { randomUUID } from "node:crypto";
 
 export interface OrchestratorContext {
   providers: Map<string, ModelProvider>;
@@ -26,8 +29,12 @@ export interface OrchestratorContext {
 }
 
 export interface AskOptions {
+  /** Per-call adapter options (working folder, access level, MCP config, timeout). */
+  request?: Pick<HarnessRequest, "cwd" | "access" | "mcpConfig" | "timeoutMs" | "addDirs" | "signal">;
   pinnedModel?: string;
   escalate?: boolean;
+  /** Override action-task detection when a caller knows tool execution is required. */
+  requiresTools?: boolean;
   onEvent?: (e: HarnessEvent) => void;
   /** Stop after the first provider even if it emits a fatal error. */
   noFallback?: boolean;
@@ -40,6 +47,10 @@ export interface AskResult {
   modelUsed: string;
   fellBack: Array<{ from: string; to: string; cause: string }>;
   usage: { inputTokens?: number; outputTokens?: number; costUsd?: number };
+  /** `completed` requires a provider done event; never infer success from text. */
+  outcome: TurnOutcome;
+  /** Present when output was interrupted or no usable response completed. */
+  error?: string;
 }
 
 /** Classify provider errors worth falling back for. */
@@ -66,8 +77,10 @@ export async function askRouted(
     delegation: ctx.delegation,
     pinnedModel: opts.pinnedModel,
     escalate: opts.escalate,
+    requiresTools: opts.requiresTools,
   });
   ctx.session.append({ v: 1, ts: new Date().toISOString(), kind: "routing", decision });
+  if (decision.selected === "none") throw new Error(decision.reason.slice(-2).join("; ") || "no available model can handle this task");
 
   const chain = [decision.selected, ...decision.fallbacks];
   const fellBack: AskResult["fellBack"] = [];
@@ -79,28 +92,40 @@ export async function askRouted(
     const provider = ctx.providers.get(providerId);
     if (!provider) continue;
 
-    let text = "";
+    const turnId = randomUUID();
+    const textChunks: string[] = [];
+    let completedText: string | undefined;
     let fatalCause: string | null = null;
     let sawDone = false;
+    let sawTool = false;
+    let cancelled = false;
     const usage: AskResult["usage"] = {};
 
     try {
-      for await (const evt of provider.generate({ model: modelId, messages, taskLabel: task })) {
-        opts.onEvent?.(evt);
+      for await (const evt of provider.generate({ ...opts.request, model: modelId, messages, taskLabel: task })) {
         switch (evt.type) {
           case "text-delta":
-            text += evt.text;
+            // Persist before forwarding: an abrupt process exit can lose at
+            // most the current provider event, never an already-visible one.
+            ctx.session.append({ v: 1, ts: new Date().toISOString(), kind: "assistant-delta", turnId, text: evt.text, provider: providerId, model: modelId });
+            textChunks.push(evt.text);
             break;
           case "done":
             sawDone = true;
-            text = evt.text || text;
+            completedText = evt.text || undefined;
+            break;
+          case "tool-call":
+            // A tool call is observable work. Re-running another model after
+            // it can duplicate a write or lose required tool state.
+            sawTool = true;
+            ctx.session.append({ v: 1, ts: new Date().toISOString(), kind: "tool-call", id: evt.id, name: evt.name, arguments: evt.arguments });
             break;
           case "usage":
-            Object.assign(usage, {
-              inputTokens: evt.usage.inputTokens,
-              outputTokens: evt.usage.outputTokens,
-              costUsd: evt.usage.costUsd,
-            });
+            // Agentic SDKs can report usage once per tool/model step. Keep the
+            // complete turn total rather than showing only the final step.
+            if (evt.usage.inputTokens !== undefined) usage.inputTokens = (usage.inputTokens ?? 0) + evt.usage.inputTokens;
+            if (evt.usage.outputTokens !== undefined) usage.outputTokens = (usage.outputTokens ?? 0) + evt.usage.outputTokens;
+            if (evt.usage.costUsd !== undefined) usage.costUsd = (usage.costUsd ?? 0) + evt.usage.costUsd;
             void recordUsage(ctx.profile, providerId, modelId, evt.usage);
             ctx.session.append({
               v: 1,
@@ -114,21 +139,55 @@ export async function askRouted(
           default:
             break;
         }
+        opts.onEvent?.(evt);
         const cause = fallbackWorthy(evt);
+        if (evt.type === "error" && evt.error.code === "aborted") {
+          cancelled = true;
+          fatalCause = evt.error.message || "request cancelled";
+          break;
+        }
         if (cause && evt.type === "error" && (evt.fatal || evt.error.code === "rate-limit")) {
           fatalCause = cause;
           break;
         }
       }
     } catch (err) {
+      cancelled = opts.request?.signal?.aborted === true;
       fatalCause = (err as Error).message.slice(0, 120);
     }
 
-    if (fatalCause && (opts.noFallback || chain.indexOf(modelId) === chain.length - 1)) {
-      // No more fallbacks — surface the failure.
-      throw new Error(`all routes failed; last error: ${fatalCause}`);
+    const text = completedText || textChunks.join("");
+
+    // Preserve anything the user has already seen even when a stream ends
+    // badly. This is also the record used when a caller resumes a session.
+    if (text) {
+      ctx.session.append({
+        v: 1, ts: new Date().toISOString(), kind: "assistant-text", text,
+        provider: providerId, model: modelId, turnId,
+      });
     }
+    const persistOutcome = (outcome: Exclude<TurnOutcome, "completed">, error: string) => {
+      ctx.session.append({ v: 1, ts: new Date().toISOString(), kind: "turn-outcome", provider: providerId, model: modelId, outcome, error });
+    };
+    if (cancelled) {
+      const error = fatalCause ?? "request cancelled";
+      const outcome: Exclude<TurnOutcome, "completed"> = text ? "interrupted" : "failed";
+      persistOutcome(outcome, error);
+      return { decision, text, providerUsed: providerId, modelUsed: modelId, fellBack, usage, outcome, error };
+    }
+
     if (fatalCause) {
+      // Never discard or repeat a response/tool sequence by falling back
+      // after a provider has made visible progress.
+      if (text || sawTool) {
+        const outcome: Exclude<TurnOutcome, "completed"> = text ? "interrupted" : "failed";
+        persistOutcome(outcome, fatalCause);
+        return { decision, text, providerUsed: providerId, modelUsed: modelId, fellBack, usage, outcome, error: fatalCause };
+      }
+      if (opts.noFallback || chain.indexOf(modelId) === chain.length - 1) {
+        // No response was produced and no safe route remains.
+        throw new Error(`all routes failed; last error: ${fatalCause}`);
+      }
       const next = chain[chain.indexOf(modelId) + 1];
       if (!next) throw new Error(`route failed at ${modelId}: ${fatalCause}`);
       fellBack.push({ from: modelId, to: next, cause: fatalCause });
@@ -142,16 +201,14 @@ export async function askRouted(
       });
       continue;
     }
-    if (sawDone || text) {
-      ctx.session.append({
-        v: 1,
-        ts: new Date().toISOString(),
-        kind: "assistant-text",
-        text,
-        provider: providerId,
-        model: modelId,
-      });
-      return { decision, text, providerUsed: providerId, modelUsed: modelId, fellBack, usage };
+    if (sawDone && text) {
+      return { decision, text, providerUsed: providerId, modelUsed: modelId, fellBack, usage, outcome: "completed" };
+    }
+    if (text || sawTool) {
+      const error = "provider stream ended without a completion event";
+      const outcome: Exclude<TurnOutcome, "completed"> = text ? "interrupted" : "failed";
+      persistOutcome(outcome, error);
+      return { decision, text, providerUsed: providerId, modelUsed: modelId, fellBack, usage, outcome, error };
     }
     lastError = `${modelId} produced no output`;
     const next = chain[chain.indexOf(modelId) + 1];

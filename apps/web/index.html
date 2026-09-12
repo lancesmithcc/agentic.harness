@@ -3,31 +3,37 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>lancesmith.cc harness</title>
-<link rel="icon" href="/assets/agentic-mark.png" />
+<title>agentic.harness</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230A0908'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23FB923C'/%3E%3C/svg%3E" />
 <link rel="stylesheet" href="/brand.css" />
+<script>
+  // Running inside the Agentic desktop app: make room for the macOS traffic lights.
+  if (/AgenticHarness\//.test(navigator.userAgent)) document.documentElement.classList.add("native-mac");
+</script>
 </head>
 <body>
 <!--
-THESIS: a model-orchestration cockpit — Claude Code's earned familiarity, worn in the lancesmith.cc world (gold Sri Yantra on charcoal; inverse deep-blue on light). Refuses the generic dark-chat default.
-OWN-WORLD: Poppins voice, tiled bg field under a readability veil, gold accent system #ffdf2c/#fff694 (inverse #0020d3/#00096b), sriyantra mark that breathes while the fleet thinks.
+THESIS: a model-orchestration cockpit — Claude Code's earned familiarity, worn in the agentic.lancesmith.cc world (amber on near-black; inverse terracotta on sand). Refuses the generic dark-chat default.
+OWN-WORLD: Fraunces display + Inter UI, hand-drawn robot swarm field under a readability veil, amber accent #FB923C (inverse #C2410C), pill buttons, the signature dot pulses while the fleet thinks.
 STORY: the operator asks; the harness names the mind it chose, shows it thinking in the hypersentient register, and falls back live; the fleet is managed in place.
 FIRST VIEWPORT: left rail (brand, new session, nav, profile+theme) + conversation column with fleet chips up top; composer anchors the bottom, AUTO routing implied.
 FORM: user-pinned Claude Code-style operator shell; seed: pinned-brand extension of the DeepHarness web client.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 -->
 <div class="ambient" aria-hidden="true"><div class="glow"></div><svg class="grain" width="0" height="0"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2"/></filter></svg></div>
-<img class="markmark" src="/assets/sriyantra.png" alt="" aria-hidden="true"/>
+
 <div class="noised" aria-hidden="true"></div>
+<div class="robots" aria-hidden="true"></div>
 <div class="app" id="app" data-busy="0">
-  <aside class="rail">
+  <aside class="rail" id="mobileDrawer">
+    <div class="drag-strip" data-tauri-drag-region></div>
     <div class="brand">
-      <img src="/assets/agentic-mark.png" id="brandMark" alt="" width="30" height="30" />
-      <a class="signature signature--compact" id="brandSig" href="#" title="agentic.lancesmith.cc">
+      <a class="signature signature--compact" id="brandSig" href="#" title="agentic.harness" aria-label="agentic.harness home">
         <span class="signature-prefix">agentic</span><span class="signature-dot">.</span><span class="signature-domain" id="sigDomain"></span><span class="signature-cursor">|</span>
       </a>
     </div>
-    <button class="newsession" id="newSession">New session</button>
+    <button class="newsession" id="newSession" type="button">New session</button>
+    <button class="mobile-menu" id="mobileMenu" type="button" aria-label="Open navigation menu" aria-controls="mobileDrawer" aria-expanded="false">Menu</button>
     <div class="nav-section-label" style="padding:0 10px;">History</div>
     <div id="chatList" class="chatlist"></div>
     <nav class="nav" id="nav">
@@ -43,14 +49,14 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     </nav>
     <div class="rail-footer">
       <span class="profile-pill" id="profilePill">home</span>
-      <button class="theme-toggle" id="themeToggle" title="Invert the field" type="button">
-        <img id="themeMark" src="/assets/agentic-mark.png" alt="" width="18" height="18" />
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle colour theme" title="Invert the field" type="button">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4Z" fill="currentColor"/></svg>
       </button>
     </div>
   </aside>
 
   <section class="main">
-    <header class="topbar">
+    <header class="topbar" data-tauri-drag-region>
       <button class="ws-btn" id="wsBtn" type="button" title="Choose working folder">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.5 4.2c0-.7.6-1.3 1.3-1.3h3.1l1.4 1.6h5.9c.7 0 1.3.6 1.3 1.3v6.7c0 .7-.6 1.3-1.3 1.3H2.8c-.7 0-1.3-.6-1.3-1.3V4.2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
         <span id="wsName">~</span>
@@ -65,9 +71,14 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
     <footer class="composer" id="composer">
       <div class="composer-inner">
-        <textarea id="task" rows="1" placeholder="how shall we proceed creator?"></textarea>
+        <div class="attach-tray" id="attachTray" hidden></div>
+        <textarea id="task" rows="1" aria-label="Task for agentic.harness" placeholder="how shall we proceed creator?"></textarea>
         <div class="composer-bar">
-          <button class="modelpick" id="modelPick" type="button" title="Choose the model for this task"><span class="mp-k">AUTO</span><span class="mp-caret">▾</span></button>
+          <button class="attach-btn" id="attachBtn" type="button" aria-label="Attach files" title="Attach files — or drop / paste them into the box">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.2 7.6 8 12.8a3.4 3.4 0 0 1-4.8-4.8l5.5-5.5a2.3 2.3 0 0 1 3.2 3.2L6.4 11.2a1.1 1.1 0 0 1-1.6-1.6L9.6 4.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <input type="file" id="fileInput" multiple hidden />
+          <button class="modelpick" id="modelPick" type="button" aria-label="Choose model" aria-haspopup="menu" aria-expanded="false" title="Choose the model for this task"><span class="mp-k">AUTO</span><span class="mp-caret">▾</span></button>
           <div class="modelmenu" id="modelMenu" hidden></div>
           <select id="pin" hidden><option value="">AUTO</option></select>
           <label class="chk" title="Delegate: if the chosen model fails or rate-limits, the harness continues with the next model in the chain. Uncheck to stay strictly on the selected model."><input type="checkbox" id="delegate" checked /> delegate</label>
@@ -75,7 +86,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           <label class="chk astra-only" hidden title="Orchestrator job: marks this call as conducting the fleet (planning/arbitration), which is the only role GPT 6 Astra may fill — and only after its Settings gate is on."><input type="checkbox" id="orchestrator" /> orchestrator job</label>
           <span class="spacer"></span>
           <button class="btn-send" id="send" type="button">Send</button>
-          <button class="btn-stop" id="stop" type="button" hidden>Stop</button>
+          <button class="btn-stop" id="stop" type="button" hidden>Stop generating</button>
         </div>
       </div>
     </footer>
@@ -83,8 +94,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 </div>
 
 <div class="overlay" id="fsOverlay" hidden>
-  <div class="fsdialog">
-    <h3>Choose a working folder</h3>
+  <div class="fsdialog" role="dialog" aria-modal="true" aria-labelledby="fsTitle">
+    <h3 id="fsTitle">Choose a working folder</h3>
     <div class="fscrumb" id="fsCrumb"></div>
     <div class="fslist" id="fsList"></div>
     <div class="fsfoot">
@@ -101,9 +112,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 (function () {
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
-  var S = { profile: null, sessionId: null, busy: false, abort: null, verbs: [], verbTimer: null,
+  var S = { profile: null, sessionId: null, busy: false, abort: null, activeTurn: null, turnSeq: 0, loadSeq: 0, listSeq: 0, statusSeq: 0, themeSeq: 0, verbs: [], verbTimer: null,
             models: [], settings: { astraAvailable: false, theme: "gold" }, view: "chat",
-            status: null, meta: {}, workspace: null, fsDir: null };
+            status: null, meta: {}, workspace: null, fsDir: null, themePinned: false, bootSeq: 0 };
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -116,16 +127,21 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   function get(url) { return fetch(url).then(function (r) { return r.json(); }); }
 
   // ---------- theme ----------
-  function applyTheme(t) {
+  function applyTheme(t, userAction) {
     document.documentElement.dataset.theme = t;
-    // single Agentic mark reads on both fields
-    $("themeMark").src = "/assets/agentic-mark.png";
-    $("brandMark").src = "/assets/agentic-mark.png";
     S.settings.theme = t;
+    function syncInverseInk() {
+      var ink = document.documentElement.dataset.theme === "inverse" ? "#1A1817" : "";
+      $("brandSig").style.setProperty("color", ink, "important");
+      $("profilePill").style.setProperty("color", ink, "important");
+      Array.prototype.forEach.call(document.querySelectorAll("#brandSig *, .nav-item:not(.active), .turn-actions .ghost"), function (node) { node.style.setProperty("color", ink, "important"); });
+    }
+    syncInverseInk(); setTimeout(syncInverseInk, 0);
+    if (userAction) { S.themeSeq++; S.themePinned = true; }
   }
   $("themeToggle").onclick = function () {
     var t = S.settings.theme === "gold" ? "inverse" : "gold";
-    applyTheme(t);
+    applyTheme(t, true);
     fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ theme: t }) }).catch(function () {});
   };
 
@@ -138,9 +154,43 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     renderView();
   }
   document.querySelectorAll(".nav-item").forEach(function (n) {
-    n.onclick = function () { setView(n.dataset.view); };
+    n.onclick = function () { setView(n.dataset.view); closeMobileMenu(); };
   });
-  $("newSession").onclick = function () { S.sessionId = null; setView("chat"); $("task").focus(); };
+  function closeMobileMenu() {
+    document.querySelector(".rail").classList.remove("mobile-open");
+    $("mobileMenu").setAttribute("aria-expanded", "false");
+    $("mobileMenu").setAttribute("aria-label", "Open navigation menu");
+  }
+  $("mobileMenu").onclick = function () {
+    var rail = document.querySelector(".rail"), open = !rail.classList.contains("mobile-open");
+    rail.classList.toggle("mobile-open", open);
+    $("mobileMenu").setAttribute("aria-expanded", String(open));
+    $("mobileMenu").setAttribute("aria-label", open ? "Close navigation menu" : "Open navigation menu");
+    if (open) setTimeout(function () { $("newSession").focus(); }, 0);
+  };
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeMobileMenu(); });
+  function detachActiveTurn() {
+    if (!S.activeTurn) return;
+    S.activeTurn.detached = true;
+    S.activeTurn.think.stop();
+    S.activeTurn = null;
+    S.abort = null;
+    setBusy(false);
+  }
+  // A fresh conversation: clear the thread (the server opens a new session on the next send).
+  // A reply still streaming keeps saving to its own session in the background.
+  $("newSession").onclick = function () {
+    // Keep an in-flight turn durable, but detach it from this fresh view. Its
+    // immutable turn object continues to own its session and stream callbacks.
+    detachActiveTurn();
+    S.bootSeq++; S.loadSeq++;
+    S.sessionId = null;
+    S.fresh = true;
+    feed.textContent = "";
+    setView("chat");
+    loadChatList();
+    $("task").focus();
+  };
 
   function renderView() {
     var v = $("view");
@@ -160,48 +210,491 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     page.appendChild(feed);
     return page;
   }
-  function sysline(text, cls) { feed.appendChild(el("div", "sys " + (cls || ""), text)); feed.lastChild.scrollIntoView({ block: "end" }); }
+  function isFollowing() {
+    var view = $("view");
+    return S.view === "chat" && view.scrollHeight - view.scrollTop - view.clientHeight < 120;
+  }
+  function followIfNeeded(wasFollowing) { if (wasFollowing) $("view").scrollTop = $("view").scrollHeight; }
+  function sysline(text, cls) { var following = isFollowing(); feed.appendChild(el("div", "sys " + (cls || ""), text)); followIfNeeded(following); }
   function thinkingLine() {
     var line = el("div", "thinking-line");
-    var mark = el("img", "thinking-mark"); mark.src = $("brandMark").src;
+    var mark = el("span", "thinking-mark");
     var txt = el("span", null, S.verbs[0] || "Crystallizing");
     line.appendChild(mark); line.appendChild(txt);
     feed.appendChild(line);
-    var i = 0;
-    S.verbTimer = setInterval(function () { i = (i + 1) % S.verbs.length; txt.textContent = S.verbs[i]; }, 2200);
-    return { line: line, stop: function () { clearInterval(S.verbTimer); line.remove(); } };
+    var i = 0, timer = setInterval(function () { i = (i + 1) % S.verbs.length; txt.textContent = S.verbs[i]; }, 2200);
+    return { line: line, stop: function () { clearInterval(timer); line.remove(); } };
   }
 
-  function send() {
-    var task = $("task").value.trim();
-    if (!task || S.busy) return;
+  // ---------- attachments ----------
+  S.attachments = [];
+  function fmtSize(n) {
+    return n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(n < 10240 ? 1 : 0) + " KB" : (n / 1048576).toFixed(1) + " MB";
+  }
+  function renderTray() {
+    var tray = $("attachTray"); tray.textContent = "";
+    tray.hidden = !S.attachments.length;
+    S.attachments.forEach(function (a, i) {
+      var chip = el("span", "attach-chip" + (a.error ? " err" : ""));
+      chip.appendChild(el("span", "attach-name", a.name));
+      chip.appendChild(el("span", "attach-size", a.error || fmtSize(a.size)));
+      var x = el("button", "attach-x", "✕"); x.type = "button"; x.title = "Remove"; x.setAttribute("aria-label", "Remove " + a.name);
+      x.onclick = function () { S.attachments.splice(i, 1); renderTray(); };
+      chip.appendChild(x);
+      tray.appendChild(chip);
+    });
+  }
+  function addFiles(list) {
+    Array.prototype.forEach.call(list || [], function (f) {
+      if (f.size > 25 * 1024 * 1024) S.attachments.push({ file: null, name: f.name, size: f.size, error: "over 25 MB" });
+      else S.attachments.push({ file: f, name: f.name || "pasted-file", size: f.size });
+    });
+    renderTray();
+  }
+  function uploadAttachments(files, profile) {
+    return Promise.all(files.map(function (a) {
+      if (a.path) return a;
+      return fetch("/api/upload?name=" + encodeURIComponent(a.name) + (profile ? "&profile=" + encodeURIComponent(profile) : ""), { method: "POST", body: a.file })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d.error) throw new Error(a.name + ": " + d.error);
+          a.path = d.path; a.type = d.type;
+          return a;
+        });
+    }));
+  }
+  function fileChips(list) {
+    var r = el("div", "msg-files");
+    list.forEach(function (a) { r.appendChild(el("span", "file-chip", a.name)); });
+    return r;
+  }
+  $("attachBtn").onclick = function () { $("fileInput").click(); };
+  $("fileInput").onchange = function () { addFiles($("fileInput").files); $("fileInput").value = ""; };
+  (function () {
+    var ci = document.querySelector(".composer-inner");
+    var hasFiles = function (e) { return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], "Files") >= 0; };
+    ci.addEventListener("dragover", function (e) { if (hasFiles(e)) { e.preventDefault(); ci.classList.add("drop"); } });
+    ci.addEventListener("dragleave", function () { ci.classList.remove("drop"); });
+    ci.addEventListener("drop", function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); ci.classList.remove("drop");
+      addFiles(e.dataTransfer.files);
+    });
+    $("task").addEventListener("paste", function (e) {
+      var files = e.clipboardData && e.clipboardData.files;
+      if (files && files.length) { e.preventDefault(); addFiles(files); }
+    });
+  })();
+
+  // ---------- artifacts (files a turn produced) ----------
+  var IMG_RE = /\.(png|jpe?g|webp|gif|svg)$/i;
+  function artifactUrl(sid, path, inline) {
+    return "/api/artifact?session=" + encodeURIComponent(sid) + "&path=" + encodeURIComponent(path) +
+      (S.profile ? "&profile=" + encodeURIComponent(S.profile) : "") + (inline ? "&inline=1" : "");
+  }
+  function artifactsRow(bubble) {
+    var r = bubble.querySelector(".artifacts");
+    if (!r) { r = el("div", "artifacts"); bubble.appendChild(r); }
+    return r;
+  }
+  // ---------- in-app preview for chat files ----------
+  var TEXT_RE = /\.(txt|md|markdown|csv|tsv|json|ya?ml|toml|xml|log|ini|css|js|jsx|ts|tsx|mjs|cjs|py|rb|go|rs|java|c|h|cpp|hpp|cs|php|swift|kt|sql|sh)$/i;
+  var FRAME_RE = /\.(pdf|html?)$/i, VIDEO_RE = /\.(mp4|mov|webm)$/i, AUDIO_RE = /\.(mp3|wav|m4a|ogg)$/i;
+  var previewEl = null, previewReturnFocus = null;
+  function trapTab(e, root) {
+    if (e.key !== "Tab") return;
+    var nodes = Array.prototype.filter.call(root.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled])'), function (node) { return node.offsetParent !== null; });
+    if (!nodes.length) return;
+    var first = nodes[0], last = nodes[nodes.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+  function previewKeys(e) { if (e.key === "Escape") closePreview(); else if (previewEl) trapTab(e, previewEl); }
+  function closePreview() {
+    if (!previewEl) return;
+    previewEl.remove(); previewEl = null;
+    document.removeEventListener("keydown", previewKeys);
+    if (previewReturnFocus) { previewReturnFocus.focus(); previewReturnFocus = null; }
+  }
+  function openPreview(sid, a) {
+    closePreview();
+    var name = a.name || a.path.split("/").pop();
+    var src = artifactUrl(sid, a.path, true);
+    var overlay = el("div", "overlay preview-overlay");
+    var box = el("div", "preview");
+    box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true"); box.setAttribute("aria-label", "Preview " + name);
+    var head = el("div", "preview-head");
+    var title = el("div", "preview-title");
+    title.appendChild(el("span", "preview-name", name));
+    title.appendChild(el("span", "preview-path", shortPath(a.path)));
+    head.appendChild(title);
+    var acts = el("div", "preview-actions");
+    var note = el("span", "preview-note");
+    [["Open", false, "Open with its default app"], ["Show in Finder", true, "Reveal the file in Finder"]].forEach(function (cfg) {
+      var b = el("button", "ghost", cfg[0]); b.type = "button"; b.title = cfg[2];
+      b.onclick = function () {
+        jsonReq("POST", "/api/artifact/open" + qs(), { session: sid, path: a.path, reveal: cfg[1] }).then(function (d) {
+          note.textContent = d && d.error ? d.error : "";
+        });
+      };
+      acts.appendChild(b);
+    });
+    var dl = el("a", "artifact-dl", "Download"); dl.href = artifactUrl(sid, a.path, false); dl.setAttribute("download", name);
+    var x = el("button", "attach-x preview-close", "✕"); x.type = "button"; x.title = "Close (Esc)"; x.setAttribute("aria-label", "Close preview"); x.onclick = closePreview;
+    acts.appendChild(dl); acts.appendChild(x);
+    head.appendChild(acts);
+    var body = el("div", "preview-body");
+    if (IMG_RE.test(name)) {
+      var img = el("img"); img.src = src; img.alt = name; body.appendChild(img);
+    } else if (FRAME_RE.test(name)) {
+      var frame = el("iframe"); frame.src = src; frame.title = name;
+      if (!/\.pdf$/i.test(name)) frame.setAttribute("sandbox", ""); // agent-made HTML renders without scripts
+      body.appendChild(frame); body.classList.add("is-frame");
+    } else if (VIDEO_RE.test(name)) {
+      var video = el("video"); video.src = src; video.controls = true; body.appendChild(video);
+    } else if (AUDIO_RE.test(name)) {
+      var audio = el("audio"); audio.src = src; audio.controls = true; body.appendChild(audio);
+    } else if (TEXT_RE.test(name)) {
+      var pre = el("pre", "preview-text", "Loading…"); body.appendChild(pre);
+      fetch(src).then(function (r) { if (!r.ok) throw new Error("This file is no longer available."); return r.text(); })
+        .then(function (t) { pre.textContent = t.length > 500000 ? t.slice(0, 500000) + "\n… (truncated)" : t; })
+        .catch(function (e) { pre.textContent = e.message; });
+    } else {
+      body.appendChild(el("div", "empty", "No preview for this file type — use Open to view it in its default app."));
+    }
+    box.appendChild(head); box.appendChild(note); box.appendChild(body);
+    overlay.appendChild(box);
+    overlay.onclick = function (e) { if (e.target === overlay) closePreview(); };
+    document.body.appendChild(overlay);
+    document.addEventListener("keydown", previewKeys);
+    previewEl = overlay; previewReturnFocus = document.activeElement; x.focus();
+  }
+
+  function artifactNode(sid, a) {
+    var name = a.name || a.path.split("/").pop();
+    var isImg = IMG_RE.test(name);
+    var wrap = el("div", "artifact" + (isImg ? " is-image" : ""));
+    wrap.title = a.path;
+    if (isImg) {
+      var thumb = el("button", "artifact-thumb"); thumb.type = "button"; thumb.title = "Preview " + name;
+      var img = el("img"); img.src = artifactUrl(sid, a.path, true); img.alt = name; img.loading = "lazy";
+      thumb.appendChild(img); thumb.onclick = function () { openPreview(sid, a); };
+      wrap.appendChild(thumb);
+    }
+    var meta = el("div", "artifact-meta");
+    var nameBtn = el("button", "artifact-name", name); nameBtn.type = "button"; nameBtn.title = "Preview " + name;
+    nameBtn.onclick = function () { openPreview(sid, a); };
+    meta.appendChild(nameBtn);
+    if (a.size != null) meta.appendChild(el("span", "artifact-size", fmtSize(a.size)));
+    var dl = el("a", "artifact-dl", "Download"); dl.href = artifactUrl(sid, a.path, false); dl.setAttribute("download", name);
+    meta.appendChild(dl);
+    wrap.appendChild(meta);
+    return wrap;
+  }
+
+  // ---------- markdown: replies render as formatted text ----------
+  // Builds DOM nodes directly (never innerHTML), so model output can't inject markup.
+  // Tolerates half-finished input, so it can re-render on every fast-type frame.
+  function mdText(parent, text) {
+    parent.appendChild(document.createTextNode(text.replace(/\\([\\`*_{}\[\]()#+\-.!|~>])/g, "$1")));
+  }
+  function mdWrap(tag, inner) { var n = el(tag); mdInline(n, inner); return n; }
+  function mdLink(url, label) {
+    var a = el("a", null, label); a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer";
+    return a;
+  }
+  var MD_INLINE = [
+    { re: /`([^`\n]+)`/, make: function (m) { return el("code", null, m[1]); } },
+    { re: /\*\*(?!\s)([^\n]+?)\*\*/, make: function (m) { return mdWrap("strong", m[1]); } },
+    { re: /__(?!\s)([^\n]+?)__/, make: function (m) { return mdWrap("strong", m[1]); } },
+    { re: /~~([^\n]+?)~~/, make: function (m) { return mdWrap("del", m[1]); } },
+    { re: /\[([^\]\n]+)\]\(\s*<?([^)\s>]+)>?\s*\)/, make: function (m) {
+      if (/^(https?:|mailto:)/i.test(m[2])) return mdLink(m[2], m[1]);
+      var span = el("span", "md-path", m[1]); span.title = m[2]; // local file links: show the name
+      return span;
+    } },
+    { re: /(?:^|(?<=[\s(]))\*(?![\s*])([^*\n]+?)(?<!\s)\*(?=[\s).,;:!?'"]|$)/, make: function (m) { return mdWrap("em", m[1]); } },
+    { re: /(?:^|(?<=[\s(]))_(?![\s_])([^_\n]+?)(?<!\s)_(?=[\s).,;:!?'"]|$)/, make: function (m) { return mdWrap("em", m[1]); } },
+    { re: /https?:\/\/[^\s<>]*[^\s<>().,;:!?'"\]]/, make: function (m) { return mdLink(m[0], m[0]); } }
+  ];
+  function mdInline(parent, text) {
+    while (text) {
+      var best = null, bestRule = null;
+      for (var r = 0; r < MD_INLINE.length; r++) {
+        var m = MD_INLINE[r].re.exec(text);
+        if (m && (!best || m.index < best.index)) { best = m; bestRule = MD_INLINE[r]; }
+      }
+      if (!best) { mdText(parent, text); return; }
+      if (best.index > 0) mdText(parent, text.slice(0, best.index));
+      parent.appendChild(bestRule.make(best));
+      text = text.slice(best.index + best[0].length);
+    }
+  }
+  var MD_ITEM = /^(\s*)([-*+]|\d{1,3}[.)])\s+(.*)$/;
+  function mdList(node, lines, i) {
+    var first = lines[i].match(MD_ITEM);
+    var ordered = /\d/.test(first[2]);
+    var base = first[1].length;
+    var list = el(ordered ? "ol" : "ul");
+    if (ordered && parseInt(first[2], 10) !== 1) list.start = parseInt(first[2], 10);
+    var current = null;
+    while (i < lines.length) {
+      var line = lines[i];
+      if (/^\s*$/.test(line)) {
+        var next = lines[i + 1] || "";
+        if (MD_ITEM.test(next) || /^\s{2,}\S/.test(next)) { i++; continue; }
+        break;
+      }
+      var m = line.match(MD_ITEM);
+      if (m && m[1].length < base) break;
+      if (m && m[1].length <= base + 1) {
+        if (/\d/.test(m[2]) !== ordered) break;
+        current = el("li"); mdInline(current, m[3]); list.appendChild(current); i++;
+        continue;
+      }
+      if (m && current) {
+        var holder = el("div");
+        i = mdList(holder, lines, i);
+        while (holder.firstChild) current.appendChild(holder.firstChild);
+        continue;
+      }
+      if (current && /^\s+\S/.test(line)) { current.appendChild(el("br")); mdInline(current, line.trim()); i++; continue; }
+      break;
+    }
+    node.appendChild(list);
+    return i;
+  }
+  function mdTable(node, lines, i) {
+    var cells = function (row) { return row.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(function (c) { return c.trim(); }); };
+    var wrap = el("div", "md-table"), table = el("table"), head = el("tr"), body = el("tbody");
+    cells(lines[i]).forEach(function (c) { var th = el("th"); mdInline(th, c); head.appendChild(th); });
+    var thead = el("thead"); thead.appendChild(head); table.appendChild(thead);
+    i += 2;
+    while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+      var tr = el("tr");
+      cells(lines[i]).forEach(function (c) { var td = el("td"); mdInline(td, c); tr.appendChild(td); });
+      body.appendChild(tr); i++;
+    }
+    table.appendChild(body); wrap.appendChild(table); node.appendChild(wrap);
+    return i;
+  }
+  function renderMarkdown(node, src) {
+    node.textContent = "";
+    var lines = String(src || "").replace(/\r\n?/g, "\n").split("\n");
+    var i = 0, para = [];
+    var flush = function () {
+      if (!para.length) return;
+      var p = el("p");
+      para.forEach(function (line, k) { if (k) p.appendChild(el("br")); mdInline(p, line); });
+      node.appendChild(p); para = [];
+    };
+    while (i < lines.length) {
+      var line = lines[i];
+      var fence = line.match(/^\s*(`{3,}|~{3,})\s*([\w+#.-]*)\s*$/);
+      if (fence) {
+        flush();
+        var closing = new RegExp("^\\s*" + fence[1].charAt(0) + "{" + fence[1].length + ",}\\s*$");
+        var code = []; i++;
+        while (i < lines.length && !closing.test(lines[i])) { code.push(lines[i]); i++; }
+        i++; // skip the closing fence (absent while still streaming)
+        var pre = el("pre", "md-code"); if (fence[2]) pre.dataset.lang = fence[2];
+        pre.appendChild(el("code", null, code.join("\n"))); node.appendChild(pre);
+        continue;
+      }
+      if (/^\s*$/.test(line)) { flush(); i++; continue; }
+      var h = line.match(/^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/);
+      if (h) { flush(); var hx = el(h[1].length <= 2 ? "h3" : "h4", "md-h"); mdInline(hx, h[2]); node.appendChild(hx); i++; continue; }
+      if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(line)) { flush(); node.appendChild(el("hr")); i++; continue; }
+      if (/^\s{0,3}>/.test(line)) {
+        flush();
+        var quoted = [];
+        while (i < lines.length && /^\s{0,3}>/.test(lines[i])) { quoted.push(lines[i].replace(/^\s{0,3}>\s?/, "")); i++; }
+        var bq = el("blockquote"); renderMarkdown(bq, quoted.join("\n")); node.appendChild(bq);
+        continue;
+      }
+      if (/^\s*\|.*\|\s*$/.test(line) && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1] || "")) { flush(); i = mdTable(node, lines, i); continue; }
+      if (MD_ITEM.test(line)) { flush(); i = mdList(node, lines, i); continue; }
+      para.push(line.trim()); i++;
+    }
+    flush();
+  }
+  /** Caret goes at the end of the last line of text, not below the last block. */
+  function placeCaret(node) {
+    var host = node;
+    while (host.lastElementChild && /^(P|H3|H4|UL|OL|LI|BLOCKQUOTE|PRE|CODE)$/.test(host.lastElementChild.tagName)) host = host.lastElementChild;
+    host.appendChild(el("span", "md-caret"));
+  }
+
+  // ---------- streaming paint ----------
+  var REDUCED_MOTION = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  function typer(node) {
+    var target = "", pending = "", frame = null;
+    function paint() {
+      var following = isFollowing();
+      if (pending) { node.appendChild(document.createTextNode(pending)); pending = ""; }
+      frame = null;
+      followIfNeeded(following);
+    }
+    function kick() {
+      if (REDUCED_MOTION || document.hidden) { paint(); return; }
+      node.classList.add("typing");
+      if (!frame) frame = requestAnimationFrame(paint);
+    }
+    return {
+      push: function (text) { target += text; pending += text; kick(); },
+      set: function (text) {
+        target = text || target;
+        pending = "";
+        if (frame) { cancelAnimationFrame(frame); frame = null; }
+        node.classList.remove("typing");
+        renderMarkdown(node, target);
+      },
+      text: function () { return target; }
+    };
+  }
+
+  // ---------- self-change (the agent edited the harness's own code) ----------
+  function selfUrl(path, sid, c) {
+    return path + "?session=" + encodeURIComponent(sid) + "&before=" + c.before + "&after=" + c.after +
+      (S.profile ? "&profile=" + encodeURIComponent(S.profile) : "");
+  }
+  function renderDiff(pre, text) {
+    pre.textContent = "";
+    text.split("\n").forEach(function (line) {
+      var cls = /^(\+\+\+|---)/.test(line) ? "d-file" : /^\+/.test(line) ? "d-add" : /^-/.test(line) ? "d-del" :
+        /^@@/.test(line) ? "d-hunk" : /^diff /.test(line) ? "d-head" : null;
+      pre.appendChild(el("span", cls, line + "\n"));
+    });
+  }
+  function commitLink(repoUrl, hash, label) {
+    if (!/^[a-f0-9]{7,64}$/i.test(hash || "") || !/^https:\/\/github\.com\/lancesmithcc\/agentic\.harness\/?$/.test(repoUrl || "")) return null;
+    var a = el("a", "self-commit", label || hash.slice(0, 8));
+    a.href = repoUrl.replace(/\/$/, "") + "/commit/" + hash; a.target = "_blank"; a.rel = "noopener noreferrer";
+    return a;
+  }
+  function localCheckpoint(hash, repoUrl, evolution) {
+    var synced = evolution && evolution.sync === "synced" && evolution.remoteCommit && evolution.remoteCommit === hash;
+    return synced ? commitLink(repoUrl, hash, "GitHub " + hash.slice(0, 8)) : el("span", "self-commit", "Local checkpoint " + String(hash || "").slice(0, 8));
+  }
+  function markReverted(box, d) {
+    box.classList.add("reverted");
+    var btn = box.querySelector(".rowbtn");
+    var reverted = d.reverted || [], skipped = d.skipped || [];
+    if (btn && reverted.length) { btn.disabled = true; btn.textContent = "Rolled back"; }
+    var note = box.querySelector(".self-result");
+    if (note) {
+      note.className = "self-result";
+      note.textContent = reverted.length ? "Rollback recorded: " + reverted.length + " file" + (reverted.length === 1 ? "" : "s") : "No files rolled back";
+      if (skipped.length) note.appendChild(document.createTextNode(" · kept newer edits: " + skipped.join(", ")));
+      var checkpoint = typeof d.checkpoint === "object" && d.checkpoint ? d.checkpoint : null;
+      var hash = d.newCommit || (checkpoint && checkpoint.afterCommit) || d.checkpoint;
+      var repo = (checkpoint && checkpoint.repoUrl) || (d.evolution || {}).repoUrl;
+      if (typeof hash === "string" && hash) { note.appendChild(document.createTextNode(" · ")); note.appendChild(localCheckpoint(hash, repo, null)); }
+    }
+  }
+  function selfChangeCard(sid, c) {
+    var files = c.files || [];
+    var box = el("div", "self-change");
+    box.dataset.key = c.before + ":" + c.after;
+    var head = el("div", "self-head");
+    head.appendChild(el("span", "self-title", "Changed its own code"));
+    head.appendChild(el("span", "tag", files.length + (files.length === 1 ? " file" : " files")));
+    box.appendChild(head);
+    var list = el("ul", "self-files");
+    files.slice(0, 12).forEach(function (f) {
+      var li = el("li");
+      li.appendChild(el("span", "self-st st-" + f.status.charAt(0), f.status.charAt(0)));
+      li.appendChild(el("span", null, f.path));
+      list.appendChild(li);
+    });
+    if (files.length > 12) list.appendChild(el("li", "self-more", "+" + (files.length - 12) + " more"));
+    box.appendChild(list);
+    if (c.afterCommit) {
+      var check = el("div", "self-checkpoint"); check.appendChild(localCheckpoint(c.afterCommit, c.repoUrl, c.evolution)); box.appendChild(check);
+    }
+    box.appendChild(el("div", "self-note", "Web source changes apply after reload or server restart. Installed desktop changes require rebuilding and reinstalling the app."));
+    var acts = el("div", "routine-actions");
+    var view = el("button", "ghost", "View diff"); view.type = "button";
+    var revert = el("button", "rowbtn", "Revert"); revert.type = "button";
+    var result = el("span", "self-result");
+    acts.appendChild(view); acts.appendChild(revert); acts.appendChild(result);
+    box.appendChild(acts);
+    var pre = el("pre", "self-diff"); pre.hidden = true;
+    box.appendChild(pre);
+    view.onclick = function () {
+      if (!pre.hidden) { pre.hidden = true; view.textContent = "View diff"; return; }
+      view.textContent = "Loading…";
+      fetch(selfUrl("/api/self/diff", sid, c)).then(function (r) { if (!r.ok) throw new Error("Diff unavailable"); return r.text(); }).then(function (t) {
+        renderDiff(pre, t); pre.hidden = false; view.textContent = "Hide diff";
+      }).catch(function (err) { result.className = "self-result auth-err"; result.textContent = err.message; view.textContent = "View diff"; });
+    };
+    revert.onclick = function () {
+      if (!confirm("Revert the agent's changes to its own code (" + files.length + " file" + (files.length === 1 ? "" : "s") + ")? Files edited again since are left alone.")) return;
+      revert.disabled = true;
+      jsonReq("POST", "/api/self/revert" + qs(), { session: sid, before: c.before, after: c.after }).then(function (d) {
+        if (d.error) { result.className = "self-result auth-err"; result.textContent = d.error; revert.disabled = false; return; }
+        markReverted(box, d);
+      }).catch(function (err) { result.className = "self-result auth-err"; result.textContent = "Rollback could not be recorded: " + err.message; revert.disabled = false; });
+    };
+    return box;
+  }
+
+  function retryButton(turn, bubble, note) {
+    var row = el("div", "turn-actions"); row.setAttribute("role", "status"); row.setAttribute("aria-live", "polite");
+    row.appendChild(el("span", "turn-note", note));
+    var retry = el("button", "ghost", "Retry"); retry.type = "button"; retry.setAttribute("aria-label", "Retry this request");
+    if (document.documentElement.dataset.theme === "inverse") retry.style.setProperty("color", "#1A1817", "important");
+    retry.onclick = function () {
+      if (S.busy) return;
+      startTurn({ task: turn.task, files: turn.files, sessionId: turn.sessionId, profile: turn.profile });
+    };
+    row.appendChild(retry); bubble.appendChild(row);
+  }
+  function askUrl(profile) { return "/api/ask" + (profile ? "?profile=" + encodeURIComponent(profile) : ""); }
+  function startTurn(seed) {
+    var task = seed.task;
+    var files = seed.files || [];
+    if ((!task && !files.length) || S.busy) return;
+    if (!task) task = files.length > 1 ? "Please look at the attached files." : "Please look at the attached file.";
     setView("chat");
     setBusy(true);
-    $("task").value = "";
-    feed.appendChild(el("div", "msg user", task));
+    if (!seed.keepComposer) $("task").value = "";
+    var turn = {
+      id: ++S.turnSeq, task: task, files: files, profile: seed.profile == null ? S.profile : seed.profile,
+      sessionId: seed.sessionId == null ? S.sessionId : seed.sessionId, controller: new AbortController(),
+      detached: false, cancelled: false, failed: false, acc: "", finished: false
+    };
+    S.activeTurn = turn; S.abort = turn.controller;
+    var following = isFollowing();
+    var userMsg = el("div", "msg user", task);
+    if (files.length) userMsg.appendChild(fileChips(files));
+    feed.appendChild(userMsg);
 
     var think = thinkingLine();
     var bubble = el("div", "msg assistant");
-    var pill = el("div", "pill", "consulting the field");
-    var thinkBox = el("details", null);
-    var tsum = el("summary", null, "reasoning"); var tbody = el("div", null);
-    thinkBox.appendChild(tsum); thinkBox.appendChild(tbody);
-    var body = el("div");
-    bubble.appendChild(pill); bubble.appendChild(thinkBox); bubble.appendChild(body);
+    var pill = el("div", "pill", "Preparing your turn…");
+    pill.setAttribute("role", "status"); pill.setAttribute("aria-live", "polite");
+    var body = el("div", "answer");
+    var tw = typer(body);
+    bubble.appendChild(pill); bubble.appendChild(body);
     feed.appendChild(bubble);
-    body.scrollIntoView({ block: "end" });
+    followIfNeeded(following);
 
-    state = { acc: "" };
-    S.abort = new AbortController();
-    fetch("/api/ask", {
+    turn.think = think; turn.bubble = bubble; turn.pill = pill; turn.body = body; turn.tw = tw;
+    uploadAttachments(files, turn.profile).then(function (uploaded) {
+      if (S.activeTurn === turn) { S.attachments = []; renderTray(); }
+      turn.files = uploaded;
+      return fetch(askUrl(turn.profile), {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({
+        attachments: uploaded.map(function (a) { return { path: a.path, name: a.name }; }),
         task: task, model: $("pin").value || undefined, escalate: $("escalate").checked || undefined,
         orchestrator: ($("orchestrator").checked && !$("orchestrator").parentElement.hidden) || undefined,
         noFallback: !$("delegate").checked || undefined,
-        sessionId: S.sessionId || undefined, profile: S.profile || undefined,
+        sessionId: turn.sessionId || undefined,
       }),
-      signal: S.abort.signal,
+      signal: turn.controller.signal,
+      });
     }).then(function (res) {
       if (!res.ok) return res.json().then(function (e) { throw new Error(e.error || res.status); });
       var reader = res.body.getReader(), dec = new TextDecoder(), buf = "";
@@ -212,34 +705,111 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           var parts = buf.split("\n\n"); buf = parts.pop();
           parts.forEach(function (p) {
             if (p.indexOf("data:") !== 0) return;
-            try { handle(JSON.parse(p.slice(5).trim()), pill, tbody, body); } catch (e) {}
+            try { handle(JSON.parse(p.slice(5).trim()), turn); }
+            catch (e) { console.warn("Malformed stream event", e); handle({ t: "error", message: "Stream protocol error. Please retry this turn." }, turn); }
           });
           return pump();
         });
       }
       return pump();
     }).catch(function (e) {
-      if (e.name !== "AbortError") sysline("✗ " + e.message, "error");
+      if (turn.detached) return;
+      turn.failed = true;
+      if (e.name === "AbortError" || turn.cancelled) {
+        if (turn.acc || tw.text()) retryButton(turn, bubble, "Stopped. Partial response kept.");
+        else retryButton(turn, bubble, "Stopped before a response arrived.");
+      } else {
+        sysline("✗ " + e.message, "error");
+        retryButton(turn, bubble, "Response interrupted. You can retry this turn.");
+      }
     }).then(function () {
-      think.stop(); setBusy(false); loadUsageChips();
-      if (!body.textContent && !state.acc) body.textContent = "(no output)";
-      loadChatList();
+      turn.finished = true; think.stop();
+      if (!turn.detached && !turn.failed && !tw.text() && !turn.acc) tw.set("(no output)");
+      if (S.activeTurn === turn) { S.activeTurn = null; S.abort = null; setBusy(false); }
+      loadUsageChips(); loadChatList(turn.profile);
     });
   }
-  var state = { acc: "" };
-  function handle(evt, pill, thinkBody, body) {
+  function send() {
+    startTurn({ task: $("task").value.trim(), files: S.attachments.filter(function (a) { return a.file; }) });
+  }
+  // Reasoning lives in its own collapsible block above the answer, and only
+  // exists when Settings → Show reasoning is on.
+  function reasoningBox(bubble, body) {
+    var box = bubble.querySelector(".reasoning");
+    if (!box) {
+      box = el("details", "reasoning"); box.open = true;
+      box.appendChild(el("summary", null, "Reasoning"));
+      box.appendChild(el("div", "reasoning-body"));
+      bubble.insertBefore(box, body);
+    }
+    return box;
+  }
+  function toolActivity(bubble, evt) {
+    var activity = bubble.querySelector(".tool-activity");
+    if (!activity) {
+      activity = el("div", "tool-activity");
+      activity.setAttribute("role", "status"); activity.setAttribute("aria-live", "polite");
+      bubble.appendChild(activity);
+    }
+    var active = activity.querySelector(".tool-row.active");
+    if (active) {
+      active.classList.remove("active");
+      active.querySelector(".tool-state").textContent = "Earlier tool";
+    }
+    var row = el("div", "tool-row active");
+    if (evt.id) row.dataset.toolId = String(evt.id);
+    row.appendChild(el("span", "tool-state", "Using tool"));
+    // The server deliberately omits arguments; names are rendered as text, never HTML.
+    row.appendChild(el("code", "tool-name", String(evt.name || "tool")));
+    activity.appendChild(row);
+  }
+  function finishToolActivity(bubble, state) {
+    var activity = bubble.querySelector(".tool-activity");
+    if (!activity) return;
+    Array.prototype.forEach.call(activity.querySelectorAll(".tool-row.active"), function (row) {
+      row.classList.remove("active"); row.querySelector(".tool-state").textContent = state || "Finished";
+    });
+  }
+  function handle(evt, turn) {
+    // `accepted` is protocol metadata, not presentation. Keep an immutable
+    // turn bound to its server session even if its UI was detached by New.
+    if (evt.t === "accepted") {
+      turn.sessionId = evt.session;
+      if (S.activeTurn === turn && S.profile === turn.profile) S.sessionId = evt.session;
+      return;
+    }
+    if (turn.detached) return;
+    var pill = turn.pill, bubble = turn.bubble, body = turn.body, tw = turn.tw;
     if (evt.t === "route") {
-      S.sessionId = evt.session;
+      turn.sessionId = evt.session;
+      if (S.activeTurn === turn && S.profile === turn.profile) S.sessionId = evt.session;
       var d = evt.decision;
       pill.textContent = (d.selected.split("/")[1] || d.selected);
-    } else if (evt.t === "delta") { state.acc += evt.text; body.textContent += evt.text; }
-    else if (evt.t === "thinking") { thinkBody.textContent += evt.text; thinkBody.parentElement.open = true; }
+    } else if (evt.t === "delta") {
+      turn.acc += evt.text; tw.push(evt.text);
+      var rbox = bubble.querySelector(".reasoning");
+      if (rbox && !rbox.dataset.folded) { rbox.open = false; rbox.dataset.folded = "1"; } // answer started: fold the thinking away
+    } else if (evt.t === "thinking") {
+      if (S.settings.reasoningOff) return;
+      var rb = reasoningBox(bubble, body).querySelector(".reasoning-body");
+      rb.textContent += evt.text; rb.scrollTop = rb.scrollHeight;
+    }
+    else if (evt.t === "tool") { toolActivity(bubble, evt); }
+    else if (evt.t === "artifact") { artifactsRow(bubble).appendChild(artifactNode(turn.sessionId, evt)); }
+    else if (evt.t === "self-change") { bubble.appendChild(selfChangeCard(turn.sessionId, evt)); }
     else if (evt.t === "fallback") {
       sysline("↳ " + (evt.from.split("/")[1] || evt.from) + " unavailable — continuing with " + (evt.to.split("/")[1] || evt.to), "fallback");
       pill.textContent = (evt.to.split("/")[1] || evt.to);
     } else if (evt.t === "done") {
-      body.textContent = evt.text; pill.textContent = (evt.model.split("/")[1] || evt.model);
-    } else if (evt.t === "error") { sysline("✗ " + evt.message, "error"); }
+      tw.set(evt.text); pill.textContent = (evt.model.split("/")[1] || evt.model); finishToolActivity(bubble);
+    } else if (evt.t === "interrupted") {
+      turn.failed = true;
+      finishToolActivity(bubble, "Stopped");
+      if (typeof evt.text === "string") tw.set(evt.text);
+      pill.textContent = (evt.model.split("/")[1] || evt.model);
+      sysline("⚠ Response interrupted" + (evt.error ? ": " + evt.error : "") + ". Partial response was saved.", "error");
+      retryButton(turn, bubble, "Response interrupted. You can retry this turn.");
+    } else if (evt.t === "error") { turn.failed = true; sysline("✗ " + evt.message, "error"); retryButton(turn, bubble, "Response interrupted. You can retry this turn."); }
   }
   function setBusy(b) {
     S.busy = b; $("app").dataset.busy = b ? "1" : "0";
@@ -285,14 +855,21 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   $("modelPick").onclick = function (e) {
     e.stopPropagation();
     var m = $("modelMenu");
-    if (!m.hidden) { m.hidden = true; return; }
+    if (!m.hidden) { m.hidden = true; $("modelPick").setAttribute("aria-expanded", "false"); return; }
     if (!(S.models || []).length) loadStatus().then(buildModelMenu).catch(function () { buildModelMenu(); });
     else buildModelMenu();
+    $("modelPick").setAttribute("aria-expanded", "true");
   };
-  document.addEventListener("click", function (e) { if (!e.target.closest(".modelpick") && !e.target.closest(".modelmenu")) $("modelMenu").hidden = true; });
+  document.addEventListener("click", function (e) { if (!e.target.closest(".modelpick") && !e.target.closest(".modelmenu")) { $("modelMenu").hidden = true; $("modelPick").setAttribute("aria-expanded", "false"); } });
   renderModelPick();
   $("send").onclick = send;
-  $("stop").onclick = function () { if (S.abort) S.abort.abort(); };
+  $("stop").onclick = function () {
+    var turn = S.activeTurn;
+    if (!turn) return;
+    turn.cancelled = true;
+    if (turn.sessionId) jsonReq("POST", "/api/turn/cancel" + (turn.profile ? "?profile=" + encodeURIComponent(turn.profile) : ""), { sessionId: turn.sessionId }).catch(function () {});
+    turn.controller.abort();
+  };
   $("task").addEventListener("keydown", function (e) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   });
@@ -306,28 +883,171 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   }
   function card() { return el("div", "card"); }
 
+  // ---------- routines ----------
+  var HB_UNITS = { minutes: "minute", hours: "hour", days: "day" };
+  var routinePoll = null;
+
+  function span(x) { return x < 90 ? x + "s" : x < 5400 ? Math.round(x / 60) + "m" : x < 129600 ? Math.round(x / 3600) + "h" : Math.round(x / 86400) + "d"; }
+  function relTime(iso) {
+    if (!iso) return "";
+    var s = Math.round((Date.parse(iso) - Date.now()) / 1000);
+    return s >= 0 ? "in " + span(s) : span(-s) + " ago";
+  }
+  function hbLabel(hb) {
+    if (!hb || !hb.enabled) return "manual";
+    var u = HB_UNITS[hb.unit] || "hour";
+    return "every " + (hb.every === 1 ? u : hb.every + " " + u + "s");
+  }
+  function jsonReq(method, url, body) {
+    return fetch(url, { method: method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) })
+      .then(function (r) { return r.json(); });
+  }
+  function routineUrl(path, id) {
+    return path + "?id=" + encodeURIComponent(id) + (S.profile ? "&profile=" + encodeURIComponent(S.profile) : "");
+  }
+  function field(label, input) {
+    var w = el("div", "rfield");
+    w.appendChild(el("span", "rlabel", label));
+    w.appendChild(input);
+    return w;
+  }
+
   function routinesPage(v) {
-    var p = panel("Routines", "Repeatable multi-step flows across the fleet. Run one to start a session with its first step.");
-    get("/api/routines" + qs()).then(function (d) {
-      (d.routines || []).forEach(function (r) {
-        var c = card();
-        var row = el("div", "row");
-        row.appendChild(el("h3", null, r.name));
-        var run = el("button", "btn-send"); run.textContent = "Run"; run.style.padding = "5px 14px";
-        row.appendChild(run); c.appendChild(row);
-        var ol = el("div"); (r.steps || []).forEach(function (s, i) { ol.appendChild(el("div", null, (i + 1) + ". " + s)); });
-        c.appendChild(ol);
-        if (r.model) c.appendChild(el("div", null, "pinned: " + r.model));
-        run.onclick = function () {
-          setView("chat");
-          $("task").value = r.steps[0] || r.name;
-          $("task").focus();
-        };
-        p.appendChild(c);
+    var p = panel("Routines", "Repeatable multi-step flows across the fleet. Run one now, or give it a heartbeat and the harness runs it on schedule.");
+    var bar = el("div", "routine-bar");
+    var add = el("button", "btn-send", "New routine"); add.type = "button";
+    bar.appendChild(add);
+    p.appendChild(bar);
+    var list = el("div", "routine-list");
+    p.appendChild(list);
+    add.onclick = function () {
+      if (list.querySelector(".routine-form.is-new")) return;
+      list.insertBefore(routineForm(null, draw), list.firstChild);
+    };
+    function schedule() {
+      routinePoll = setTimeout(function () {
+        if (S.view !== "routines" || !document.body.contains(list)) return;
+        if (list.querySelector(".routine-form")) schedule(); else draw();
+      }, 3000);
+    }
+    function draw() {
+      return get("/api/routines" + qs()).then(function (d) {
+        list.textContent = "";
+        var rs = d.routines || [];
+        rs.forEach(function (r) { list.appendChild(routineCard(r, draw)); });
+        if (!rs.length) list.appendChild(el("div", "empty", "No routines yet — click New routine."));
+        if (routinePoll) { clearTimeout(routinePoll); routinePoll = null; }
+        // live-update while something runs or a heartbeat is armed
+        if (rs.some(function (r) { return r.running || (r.heartbeat && r.heartbeat.enabled); })) schedule();
       });
-      if (!(d.routines || []).length) p.appendChild(el("div", "empty", "No routines yet — add them to ~/.deepharness/routines.json"));
-    });
+    }
+    draw();
     v.appendChild(p);
+  }
+
+  function routineCard(r, redraw) {
+    var c = card(); c.classList.add("routine");
+    var row = el("div", "row");
+    row.appendChild(el("h3", null, r.name));
+    var tags = el("div", "routine-tags");
+    tags.appendChild(el("span", "tag" + (r.heartbeat && r.heartbeat.enabled ? " hb-on" : ""), hbLabel(r.heartbeat)));
+    tags.appendChild(el("span", "tag", r.model || "AUTO"));
+    row.appendChild(tags);
+    c.appendChild(row);
+    var ol = el("ol", "routine-steps");
+    (r.steps || []).forEach(function (s) { ol.appendChild(el("li", null, s)); });
+    c.appendChild(ol);
+
+    var meta = el("div", "routine-meta");
+    if (r.running) meta.appendChild(el("span", "auth-state wait", "Running step " + (r.runningStep || 1) + " of " + (r.steps || []).length));
+    else if (r.lastRun) meta.appendChild(el("span", "auth-state" + (r.lastStatus === "ok" ? " ok" : ""), (r.lastStatus === "ok" ? "Last run " : "Failed ") + relTime(r.lastRun)));
+    if (r.heartbeat && r.heartbeat.enabled && r.nextRun && !r.running) meta.appendChild(el("span", "routine-next", "next run " + relTime(r.nextRun)));
+    if (!r.running && r.lastStatus === "error" && r.lastError) meta.appendChild(el("span", "auth-err", r.lastError));
+    if (meta.childNodes.length) c.appendChild(meta);
+
+    var actions = el("div", "routine-actions");
+    var run = el("button", "btn-send", r.running ? "Running…" : "Run now"); run.type = "button"; run.disabled = !!r.running;
+    actions.appendChild(run);
+    if (r.lastSession) {
+      var open = el("button", "ghost", "Open last run"); open.type = "button";
+      open.onclick = function () { loadTranscript(r.lastSession); loadChatList(); };
+      actions.appendChild(open);
+    }
+    var edit = el("button", "ghost", "Edit"); edit.type = "button";
+    var del = el("button", "rowbtn", "Delete"); del.type = "button";
+    actions.appendChild(edit); actions.appendChild(del);
+    c.appendChild(actions);
+
+    run.onclick = function () {
+      run.disabled = true; run.textContent = "Starting…";
+      jsonReq("POST", routineUrl("/api/routines/run", r.id)).then(function () { loadChatList(); redraw(); });
+    };
+    edit.onclick = function () { c.replaceWith(routineForm(r, redraw)); };
+    del.onclick = function () {
+      if (!confirm("Delete routine “" + r.name + "”?")) return;
+      jsonReq("DELETE", routineUrl("/api/routines", r.id)).then(redraw);
+    };
+    return c;
+  }
+
+  function routineForm(r, redraw) {
+    var isNew = !r;
+    r = r || { name: "", steps: [], model: "" };
+    var hb = r.heartbeat || { enabled: false, every: 1, unit: "hours" };
+    var f = el("div", "card routine-form" + (isNew ? " is-new" : ""));
+    f.appendChild(el("h3", null, isNew ? "New routine" : "Edit routine"));
+
+    var name = el("input"); name.type = "text"; name.placeholder = "Morning triage"; name.value = r.name;
+    var steps = el("textarea", "panel-input"); steps.rows = 4; steps.value = (r.steps || []).join("\n");
+    steps.placeholder = "One step per line — each runs as its own turn, in order.";
+    var model = el("select");
+    Array.prototype.forEach.call($("pin").options, function (o) { var opt = el("option", null, o.textContent); opt.value = o.value; model.appendChild(opt); });
+    model.value = r.model || "";
+    if (r.model && model.value !== r.model) { var keep = el("option", null, r.model); keep.value = r.model; model.appendChild(keep); model.value = r.model; }
+    f.appendChild(field("Name", name));
+    f.appendChild(field("Steps", steps));
+    f.appendChild(field("Model", model));
+
+    var hbRow = el("div", "hb-row");
+    var sw = el("label", "switch"); var on = el("input"); on.type = "checkbox"; on.checked = !!hb.enabled;
+    sw.appendChild(on); sw.appendChild(el("span", "knob"));
+    var every = el("input"); every.type = "number"; every.min = "1"; every.step = "1"; every.value = String(hb.every || 1);
+    var unit = el("select");
+    ["minutes", "hours", "days"].forEach(function (u) { var o = el("option", null, u); o.value = u; unit.appendChild(o); });
+    unit.value = hb.unit || "hours";
+    hbRow.appendChild(sw); hbRow.appendChild(el("span", null, "Run every")); hbRow.appendChild(every); hbRow.appendChild(unit);
+    var sync = function () { every.disabled = unit.disabled = !on.checked; hbRow.classList.toggle("off", !on.checked); };
+    on.onchange = sync; sync();
+    f.appendChild(field("Heartbeat", hbRow));
+    f.appendChild(el("div", "hb-hint", "Runs on schedule in the active profile while the harness server is up. Minimum 5 minutes."));
+
+    var err = el("div", "auth-err");
+    var actions = el("div", "routine-actions");
+    var save = el("button", "btn-send", isNew ? "Create routine" : "Save changes"); save.type = "button";
+    var cancel = el("button", "ghost", "Cancel"); cancel.type = "button";
+    actions.appendChild(save); actions.appendChild(cancel);
+    f.appendChild(err); f.appendChild(actions);
+
+    cancel.onclick = function () { redraw(); };
+    save.onclick = function () {
+      var body = {
+        name: name.value.trim(),
+        steps: steps.value.split("\n").map(function (s) { return s.trim(); }).filter(Boolean),
+        model: model.value,
+        heartbeat: { enabled: on.checked, every: Math.max(1, parseInt(every.value, 10) || 1), unit: unit.value }
+      };
+      if (!body.name) { err.textContent = "Give the routine a name."; return; }
+      if (!body.steps.length) { err.textContent = "Add at least one step."; return; }
+      if (body.heartbeat.enabled && body.heartbeat.unit === "minutes" && body.heartbeat.every < 5) { err.textContent = "Minimum heartbeat is 5 minutes."; return; }
+      save.disabled = true; err.textContent = "";
+      jsonReq(isNew ? "POST" : "PUT", isNew ? "/api/routines" + qs() : routineUrl("/api/routines", r.id), body).then(function (res) {
+        save.disabled = false;
+        if (res.error) { err.textContent = res.error; return; }
+        redraw();
+      });
+    };
+    setTimeout(function () { name.focus(); }, 0);
+    return f;
   }
 
   function artifactsPage(v) {
@@ -368,32 +1088,471 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     v.appendChild(p);
   }
 
+  // ---------- tools & mcp ----------
+  function shortPath(p) { return String(p || "").replace(/^\/Users\/[^/]+/, "~"); }
+  function linesToList(s) { return String(s || "").split("\n").map(function (x) { return x.trim(); }).filter(Boolean); }
+  function withProfile(path) { return path + (path.indexOf("?") >= 0 ? (S.profile ? "&profile=" + encodeURIComponent(S.profile) : "") : qs()); }
+
   function toolsPage(v) {
-    var p = panel("Tools & MCP", "CLI executables discovered in $PATH, available to the fleet.");
-    get("/api/tools").then(function (d) {
-      (d.tools || []).forEach(function (t) {
-        var c = card(), row = el("div", "row");
-        row.appendChild(el("h3", null, (t.available ? "" : "✗ ") + t.name));
-        row.appendChild(el("span", "tag", t.version || (t.available ? "available" : "missing")));
-        c.appendChild(row);
-        p.appendChild(c);
-      });
-    });
+    var p = panel("Tools & MCP", "MCP servers and CLI tools available to the fleet. Add your own, remove what you added, hide what you don't want listed.");
+    var body = el("div", "tools-body");
+    p.appendChild(body);
     v.appendChild(p);
+    var act = function (method, path, payload) {
+      return jsonReq(method, withProfile(path), payload).then(function (d) {
+        if (d && d.error) { alert(d.error); return; }
+        draw();
+      });
+    };
+    function head(label, button, onClick) {
+      var h = el("div", "tools-head");
+      h.appendChild(el("div", "nav-section-label", label));
+      var b = el("button", "btn-send", button); b.type = "button"; b.onclick = onClick;
+      h.appendChild(b);
+      return h;
+    }
+    function draw() {
+      get(withProfile("/api/tools")).then(function (d) {
+        body.textContent = "";
+
+        // MCP servers
+        var mcpSlot = el("div");
+        body.appendChild(head("MCP servers", "Add MCP server", function () {
+          if (!mcpSlot.firstChild) mcpSlot.appendChild(mcpForm(function () { mcpSlot.textContent = ""; }, draw));
+        }));
+        body.appendChild(el("p", "tools-note", "Servers added here load into Claude and Codex in every profile. Agents call MCP tools only when Settings → Agent file access is Full autonomy."));
+        body.appendChild(mcpSlot);
+        (d.harnessMcp || []).forEach(function (m) {
+          var c = card(), row = el("div", "row");
+          row.appendChild(el("h3", null, m.name));
+          var tags = el("div", "routine-tags");
+          tags.appendChild(el("span", "tag hb-on", "in harness")); tags.appendChild(el("span", "tag", m.type));
+          row.appendChild(tags); c.appendChild(row);
+          c.appendChild(el("div", "tool-cmd", m.url || [m.command].concat(m.args || []).join(" ")));
+          if ((m.envKeys || []).length) c.appendChild(el("div", "tool-env", "env: " + m.envKeys.join(", ")));
+          var acts = el("div", "routine-actions");
+          var rm = el("button", "rowbtn", "Remove"); rm.type = "button";
+          rm.onclick = function () {
+            if (confirm("Remove MCP server “" + m.name + "” from the harness?")) act("DELETE", "/api/tools/mcp?name=" + encodeURIComponent(m.name));
+          };
+          acts.appendChild(rm); c.appendChild(acts);
+          body.appendChild(c);
+        });
+        if (!(d.harnessMcp || []).length) body.appendChild(el("div", "empty", "No MCP servers in the harness yet — add one, or use one found below."));
+        var disc = (d.discoveredMcp || []).filter(function (m) { return !m.hidden; });
+        if (disc.length) {
+          body.appendChild(el("div", "tools-sub", "Found in other configs"));
+          var dg = el("div", "tool-grid");
+          disc.forEach(function (m) {
+            var c = card();
+            c.appendChild(el("h3", null, m.name));
+            c.appendChild(el("span", "tool-src", shortPath(m.source)));
+            var foot = el("div", "tool-foot");
+            if (m.inHarness) foot.appendChild(el("span", "auth-state ok", "In harness"));
+            else if (m.importable) {
+              var imp = el("button", "ghost", "Use in harness"); imp.type = "button";
+              imp.onclick = function () { act("POST", "/api/tools/mcp/import", { name: m.name, source: m.source }); };
+              foot.appendChild(imp);
+            } else foot.appendChild(el("span", "tool-src", "codex config"));
+            var hide = el("button", "rowbtn", "Hide"); hide.type = "button";
+            hide.onclick = function () { act("POST", "/api/tools/hide", { kind: "mcp", name: m.name, hidden: true }); };
+            foot.appendChild(hide); c.appendChild(foot);
+            dg.appendChild(c);
+          });
+          body.appendChild(dg);
+        }
+
+        // CLI tools
+        var toolSlot = el("div");
+        body.appendChild(head("CLI tools", "Add CLI tool", function () {
+          if (!toolSlot.firstChild) toolSlot.appendChild(toolForm(function () { toolSlot.textContent = ""; }, draw));
+        }));
+        body.appendChild(el("p", "tools-note", "Tools you add are described to every model; agents run them when shell access is allowed."));
+        body.appendChild(toolSlot);
+        (d.manualTools || []).forEach(function (t) {
+          var c = card(), row = el("div", "row");
+          row.appendChild(el("h3", null, t.name));
+          var tags = el("div", "routine-tags");
+          tags.appendChild(el("span", "tag hb-on", "added"));
+          tags.appendChild(el("span", "tag", t.available ? "found" : "not found"));
+          row.appendChild(tags); c.appendChild(row);
+          c.appendChild(el("div", "tool-cmd", t.command));
+          if (t.description) c.appendChild(el("p", null, t.description));
+          var acts = el("div", "routine-actions");
+          var rm = el("button", "rowbtn", "Remove"); rm.type = "button";
+          rm.onclick = function () { if (confirm("Remove CLI tool “" + t.name + "”?")) act("DELETE", "/api/tools/tool?name=" + encodeURIComponent(t.name)); };
+          acts.appendChild(rm); c.appendChild(acts);
+          body.appendChild(c);
+        });
+        var tg = el("div", "tool-grid");
+        (d.tools || []).filter(function (t) { return !t.hidden; }).forEach(function (t) {
+          var c = card();
+          c.appendChild(el("h3", null, t.name));
+          c.appendChild(el("span", "tool-src", t.available ? (t.version || shortPath(t.path) || "available") : "missing"));
+          var foot = el("div", "tool-foot");
+          foot.appendChild(el("span", "auth-state" + (t.available ? " ok" : ""), t.available ? "On PATH" : "Missing"));
+          var hide = el("button", "rowbtn", "Hide"); hide.type = "button";
+          hide.onclick = function () { act("POST", "/api/tools/hide", { kind: "tool", name: t.name, hidden: true }); };
+          foot.appendChild(hide); c.appendChild(foot);
+          tg.appendChild(c);
+        });
+        body.appendChild(el("div", "tools-sub", "Found on PATH"));
+        body.appendChild(tg);
+
+        // hidden
+        var hidden = (d.tools || []).filter(function (t) { return t.hidden; }).map(function (t) { return { kind: "tool", name: t.name }; })
+          .concat((d.discoveredMcp || []).filter(function (m) { return m.hidden; }).map(function (m) { return { kind: "mcp", name: m.name }; }));
+        if (hidden.length) {
+          body.appendChild(el("div", "tools-sub", "Hidden"));
+          var hg = el("div", "tool-grid");
+          hidden.forEach(function (h) {
+            var c = card();
+            c.appendChild(el("h3", null, h.name));
+            var foot = el("div", "tool-foot");
+            foot.appendChild(el("span", "tool-src", h.kind === "mcp" ? "MCP server" : "CLI tool"));
+            var un = el("button", "rowbtn unhide", "Restore"); un.type = "button";
+            un.onclick = function () { act("POST", "/api/tools/hide", { kind: h.kind, name: h.name, hidden: false }); };
+            foot.appendChild(un); c.appendChild(foot);
+            hg.appendChild(c);
+          });
+          body.appendChild(hg);
+        }
+      });
+    }
+    draw();
+  }
+
+  function formShell(title, fields, saveLabel, onSave, close) {
+    var f = el("div", "card routine-form");
+    f.appendChild(el("h3", null, title));
+    fields.forEach(function (x) { f.appendChild(x); });
+    var err = el("div", "auth-err");
+    var acts = el("div", "routine-actions");
+    var save = el("button", "btn-send", saveLabel); save.type = "button";
+    var cancel = el("button", "ghost", "Cancel"); cancel.type = "button";
+    acts.appendChild(save); acts.appendChild(cancel);
+    f.appendChild(err); f.appendChild(acts);
+    cancel.onclick = close;
+    save.onclick = function () {
+      err.textContent = "";
+      var p = onSave(function (msg) { err.textContent = msg; });
+      if (!p) return;
+      save.disabled = true;
+      p.then(function (res) {
+        save.disabled = false;
+        if (res && res.error) { err.textContent = res.error; return; }
+        close();
+      });
+    };
+    return f;
+  }
+
+  function mcpForm(close, saved) {
+    var name = el("input"); name.type = "text"; name.placeholder = "playwright";
+    var type = el("select");
+    [["stdio", "Local command (stdio)"], ["http", "Remote URL (http)"]].forEach(function (o) { var op = el("option", null, o[1]); op.value = o[0]; type.appendChild(op); });
+    var command = el("input"); command.type = "text"; command.placeholder = "npx";
+    var args = el("textarea", "panel-input"); args.rows = 3; args.placeholder = "One argument per line\n@playwright/mcp@latest";
+    var urlIn = el("input"); urlIn.type = "text"; urlIn.placeholder = "https://example.com/mcp";
+    var env = el("textarea", "panel-input"); env.rows = 2; env.placeholder = "Optional — KEY=value, one per line";
+    var fCmd = field("Command", command), fArgs = field("Arguments", args), fUrl = field("URL", urlIn);
+    var sync = function () { var http = type.value === "http"; fCmd.hidden = http; fArgs.hidden = http; fUrl.hidden = !http; };
+    type.onchange = sync; sync();
+    setTimeout(function () { name.focus(); }, 0);
+    return formShell("Add MCP server", [field("Name", name), field("Transport", type), fCmd, fArgs, fUrl, field("Environment", env)], "Add server", function (fail) {
+      var envObj = {}, bad = null;
+      linesToList(env.value).forEach(function (l) {
+        var i = l.indexOf("=");
+        if (i < 1) bad = l; else envObj[l.slice(0, i).trim()] = l.slice(i + 1).trim();
+      });
+      if (bad) { fail("Environment lines must look like KEY=value (" + bad + ")"); return null; }
+      return jsonReq("POST", withProfile("/api/tools/mcp"), {
+        name: name.value.trim(), type: type.value, command: command.value.trim(), args: linesToList(args.value), url: urlIn.value.trim(), env: envObj
+      }).then(function (res) { if (!res.error) saved(); return res; });
+    }, close);
+  }
+
+  function toolForm(close, saved) {
+    var name = el("input"); name.type = "text"; name.placeholder = "imagemagick";
+    var command = el("input"); command.type = "text"; command.placeholder = "magick   or   /opt/homebrew/bin/magick";
+    var desc = el("input"); desc.type = "text"; desc.placeholder = "What it's for — shown to the models";
+    setTimeout(function () { name.focus(); }, 0);
+    return formShell("Add CLI tool", [field("Name", name), field("Command", command), field("Description", desc)], "Add tool", function () {
+      return jsonReq("POST", withProfile("/api/tools/tool"), { name: name.value.trim(), command: command.value.trim(), description: desc.value.trim() })
+        .then(function (res) { if (!res.error) saved(); return res; });
+    }, close);
+  }
+
+  // ---------- accounts (subscription logins) ----------
+  var AUTH = [
+    { id: "claude", title: "Claude", button: "Log in with Claude", sub: "Claude Code subscription — powers the claude-code models." },
+    { id: "chatgpt", title: "ChatGPT", button: "Log in with ChatGPT", sub: "ChatGPT plan through the Codex CLI — powers the codex models." }
+  ];
+  var authPoll = null, authCards = null, authSeen = {};
+
+  function accountsSection() {
+    var box = el("div", "accounts");
+    box.appendChild(el("div", "nav-section-label", "Accounts · profile " + (S.profile || "home")));
+    var grid = el("div", "grid2");
+    var cards = {};
+    AUTH.forEach(function (a) {
+      var c = el("div", "card authcard");
+      var row = el("div", "row");
+      row.appendChild(el("h3", null, a.title));
+      var state = el("span", "auth-state", "Checking");
+      row.appendChild(state);
+      c.appendChild(row);
+      var detail = el("p", "auth-detail", a.sub);
+      var btn = el("button", "btn-send auth-btn", a.button); btn.type = "button";
+      var help = el("div", "auth-help"); help.hidden = true;
+      c.appendChild(detail); c.appendChild(btn); c.appendChild(help);
+      var k = { a: a, state: state, detail: detail, btn: btn, help: help, busy: false };
+      btn.onclick = function () { beginLogin(k, cards); };
+      cards[a.id] = k;
+      grid.appendChild(c);
+    });
+    box.appendChild(grid);
+    authCards = cards;
+    // Settings can re-render mid sign-in; resume polling for whatever the server says is pending.
+    refreshAuth(cards).then(function (d) {
+      if (AUTH.some(function (a) { return d[a.id] && d[a.id].pending && !d[a.id].loggedIn; })) pollAuth();
+    });
+    return box;
+  }
+
+  function paintAuth(k, st) {
+    if (!st) return;
+    authSeen[k.a.id] = !!st.loggedIn;
+    var waiting = !st.loggedIn && (st.pending || k.busy);
+    k.state.className = "auth-state" + (st.loggedIn ? " ok" : waiting ? " wait" : "");
+    k.state.textContent = st.loggedIn ? "Connected" : waiting ? "Waiting for sign-in" : "Not connected";
+    k.detail.textContent = st.loggedIn && st.detail ? st.detail : k.a.sub;
+    if (st.loggedIn) {
+      k.busy = false;
+      k.btn.className = "ghost auth-btn"; k.btn.textContent = "Reconnect";
+      k.help.hidden = true; k.help.textContent = "";
+    } else if (!k.busy) {
+      k.btn.className = "btn-send auth-btn"; k.btn.textContent = k.a.button;
+    }
+  }
+
+  function refreshAuth(cards) {
+    return get("/api/auth/status" + qs()).then(function (d) {
+      AUTH.forEach(function (a) { paintAuth(cards[a.id], d[a.id]); });
+      return d;
+    });
+  }
+
+  function beginLogin(k, cards) {
+    k.busy = true; k.btn.disabled = true; k.btn.textContent = "Starting…";
+    k.help.hidden = true; k.help.textContent = "";
+    fetch("/api/auth/login" + qs(), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: k.a.id }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        k.btn.disabled = false;
+        k.help.hidden = false;
+        if (d.error || (!d.url && d.done)) {
+          k.busy = false;
+          k.btn.className = "btn-send auth-btn"; k.btn.textContent = k.a.button;
+          k.help.appendChild(el("div", "auth-err", d.error || d.output || "Sign-in could not start."));
+          return;
+        }
+        k.btn.className = "ghost auth-btn"; k.btn.textContent = "Restart sign-in";
+        paintAuth(k, { loggedIn: false, pending: true });
+        k.help.appendChild(el("div", null, "A browser tab should open — finish signing in there. This card updates on its own."));
+        if (d.url) {
+          var link = el("a", "auth-link", "Open the sign-in page");
+          link.href = d.url; link.target = "_blank"; link.rel = "noopener noreferrer";
+          k.help.appendChild(link);
+        }
+        if (k.a.id === "claude") {
+          k.help.appendChild(el("div", null, "If the page shows a code, paste it here:"));
+          var codeRow = el("div", "auth-code");
+          var input = el("input"); input.type = "text"; input.placeholder = "Authentication code"; input.autocomplete = "off";
+          var send = el("button", "ghost", "Submit code"); send.type = "button";
+          var note = el("div", "auth-note");
+          send.onclick = function () {
+            if (!input.value.trim()) return;
+            send.disabled = true;
+            fetch("/api/auth/code" + qs(), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: input.value }) })
+              .then(function (r) { return r.json(); })
+              .then(function (res) {
+                send.disabled = false;
+                note.className = res.error ? "auth-err" : "auth-note";
+                note.textContent = res.error || "Code sent — checking…";
+                if (!res.error) input.value = "";
+              });
+          };
+          input.onkeydown = function (e) { if (e.key === "Enter") send.click(); };
+          codeRow.appendChild(input); codeRow.appendChild(send);
+          k.help.appendChild(codeRow); k.help.appendChild(note);
+        }
+        pollAuth(cards);
+      })
+      .catch(function (err) {
+        k.busy = false; k.btn.disabled = false; k.btn.textContent = k.a.button;
+        k.help.hidden = false; k.help.appendChild(el("div", "auth-err", String(err)));
+      });
+  }
+
+  function pollAuth() {
+    if (authPoll) clearInterval(authPoll);
+    var until = Date.now() + 10 * 60 * 1000, connected = false;
+    authPoll = setInterval(function () {
+      if (S.view !== "settings" || Date.now() > until || !authCards) {
+        clearInterval(authPoll); authPoll = null; return;
+      }
+      var cards = authCards, was = {};
+      AUTH.forEach(function (a) { was[a.id] = authSeen[a.id]; });
+      refreshAuth(cards).then(function (d) {
+        var waiting = false;
+        AUTH.forEach(function (a) {
+          var st = d[a.id] || {}, k = cards[a.id];
+          if (st.loggedIn && was[a.id] === false) connected = true;
+          if (!st.loggedIn && k.busy && !st.pending) {
+            // the CLI exited without a login (closed tab, bad code, timeout)
+            k.busy = false; paintAuth(k, st);
+            k.help.hidden = false; k.help.appendChild(el("div", "auth-err", "Sign-in ended without connecting — try again."));
+          }
+          if (!st.loggedIn && (st.pending || k.busy)) waiting = true;
+        });
+        if (!waiting) {
+          clearInterval(authPoll); authPoll = null;
+          // refresh fleet chips once, after sign-in settles (this re-renders Settings)
+          if (connected) loadStatus();
+        }
+      });
+    }, 2500);
+  }
+
+  // ---------- soul.md ----------
+  function soulSection() {
+    var c = el("div", "card soul");
+    var row = el("div", "row");
+    row.appendChild(el("h3", null, "soul.md"));
+    var state = el("span", "tag", "loading");
+    row.appendChild(state);
+    c.appendChild(row);
+    c.appendChild(el("p", null, "Standing instructions prepended to every session — chat, CLI and routines, on every model and profile."));
+    var ta = el("textarea", "panel-input soul-input"); ta.spellcheck = false;
+    ta.placeholder = "# Soul\n\nWho the harness is, how it speaks, what it always and never does…";
+    var foot = el("div", "routine-actions");
+    var save = el("button", "btn-send", "Save soul"); save.type = "button"; save.disabled = true;
+    var path = el("span", "fspath", "");
+    foot.appendChild(save); foot.appendChild(path);
+    c.appendChild(ta); c.appendChild(foot);
+
+    var saved = "";
+    var mark = function () {
+      var dirty = ta.value !== saved;
+      save.disabled = !dirty;
+      state.textContent = dirty ? "unsaved" : saved.trim() ? "active" : "empty";
+      state.classList.toggle("dirty", dirty);
+    };
+    get("/api/soul").then(function (d) { saved = d.text || ""; ta.value = saved; path.textContent = d.path || ""; mark(); });
+    ta.oninput = mark;
+    var doSave = function () {
+      if (save.disabled) return;
+      save.disabled = true;
+      jsonReq("PUT", "/api/soul", { text: ta.value }).then(function (d) {
+        if (d.error) { state.textContent = d.error; save.disabled = false; return; }
+        saved = d.text; mark(); state.textContent = "saved";
+      });
+    };
+    save.onclick = doSave;
+    ta.onkeydown = function (e) { if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); doSave(); } };
+    return c;
+  }
+
+  // ---------- agent file access ----------
+  var ACCESS_MODES = [
+    { id: "read-only", label: "Read-only", note: "Agents can read files but can't change anything." },
+    { id: "workspace", label: "Working folder", note: "Claude and Codex can create and edit files in the working folder. Shell commands and MCP tools stay blocked." },
+    { id: "full", label: "Full autonomy", note: "Agents run shell commands and MCP tools (browser automation, /gpt-image) without asking. Use only with a working folder you trust." }
+  ];
+  function accessSection() {
+    var c = el("div", "card access");
+    c.appendChild(el("h3", null, "Agent file access"));
+    c.appendChild(el("p", null, "What the CLI agents (Claude, Codex) may do in the working folder. Files they make show up in chat as downloads."));
+    var seg = el("div", "seg"), note = el("p", "access-note");
+    var cur = S.settings.agentAccess || "workspace";
+    var paint = function () {
+      Array.prototype.forEach.call(seg.children, function (b) { b.classList.toggle("active", b.dataset.mode === cur); });
+      ACCESS_MODES.forEach(function (m) { if (m.id === cur) note.textContent = m.note; });
+      note.classList.toggle("warn", cur === "full");
+    };
+    ACCESS_MODES.forEach(function (m) {
+      var b = el("button", "seg-btn", m.label); b.type = "button"; b.dataset.mode = m.id;
+      b.onclick = function () {
+        cur = m.id; paint();
+        jsonReq("PUT", "/api/settings", { agentAccess: m.id }).then(function (s) { if (s && !s.error) S.settings = s; });
+      };
+      seg.appendChild(b);
+    });
+    c.appendChild(seg); c.appendChild(note); paint();
+    return c;
+  }
+
+  // ---------- self-evolve ----------
+  function selfSection() {
+    var c = el("div", "card self-card");
+    var row = el("div", "row");
+    row.appendChild(el("h3", null, "Self-evolve"));
+    var sw = el("label", "switch");
+    var cb = el("input"); cb.type = "checkbox"; cb.checked = !!S.settings.selfEvolve;
+    sw.appendChild(cb); sw.appendChild(el("span", "knob")); row.appendChild(sw);
+    c.appendChild(row);
+    c.appendChild(el("p", null, "With self-evolve on, the agent can rewrite any harness source when you ask: UI, server, routing, providers, and desktop code. Every change gets a local git checkpoint and appears in chat with a diff and rollback. Read-only access still blocks edits."));
+    var status = el("div", "self-status");
+    c.appendChild(status);
+    var paint = function (d) {
+      status.textContent = "";
+      if (!d || d.error) { status.appendChild(el("span", "access-note warn", (d && d.error) || "Self-evolve status is unavailable.")); return; }
+      status.appendChild(el("span", "tool-cmd", d.sourceRoot ? shortPath(d.sourceRoot) : "no source folder found"));
+      status.appendChild(el("span", "auth-state" + (d.git ? " ok" : ""), d.git ? "git checkpoints" : "no git — changes can't be reverted"));
+      if (cb.checked && d.access === "read-only") status.appendChild(el("span", "access-note warn", "Agent file access is read-only, so no edits are possible."));
+      var evo = d.evolution || {};
+      if (evo.branch) status.appendChild(el("span", "tag", evo.branch));
+      if (evo.localCommit) status.appendChild(localCheckpoint(evo.localCommit, evo.repoUrl, evo));
+      var syncText = evo.sync === "synced" ? "GitHub synced" : evo.sync === "pending" ? "GitHub sync pending" : evo.sync === "error" ? "GitHub sync needs retry" : "GitHub not configured";
+      status.appendChild(el("span", "auth-state" + (evo.sync === "synced" ? " ok" : ""), syncText));
+      if (evo.error) status.appendChild(el("span", "access-note warn", evo.error));
+      if (evo.sync === "pending" || evo.sync === "error") {
+        var retry = el("button", "ghost", evo.busy ? "Syncing…" : "Retry sync"); retry.type = "button"; retry.disabled = !!evo.busy;
+        retry.onclick = function () { retry.disabled = true; retry.textContent = "Syncing…"; jsonReq("POST", "/api/self/sync" + qs(), {}).then(load).catch(function (err) { status.appendChild(el("span", "access-note warn", "Sync failed: " + err.message)); retry.disabled = false; retry.textContent = "Retry sync"; }); };
+        status.appendChild(retry);
+      }
+    };
+    var load = function () { get("/api/self" + qs()).then(paint); };
+    cb.onchange = function () {
+      jsonReq("PUT", "/api/settings", { selfEvolve: cb.checked }).then(function (s) { if (s && !s.error) S.settings = s; load(); }).catch(function (err) { status.appendChild(el("span", "access-note warn", err.message)); });
+    };
+    load();
+    (function poll() {
+      setTimeout(function () {
+        if (S.view !== "settings" || !document.body.contains(c)) return;
+        load(); poll();
+      }, 5000);
+    })();
+    return c;
   }
 
   function settingsPage(v) {
-    var p = panel("Settings", "Theme, the Astra gate, and the model roster with each mind's delegate role.");
+    var p = panel("Settings", "Accounts, soul.md, agent access, self-evolve, theme, the Astra gate, and the model roster with each mind's delegate role.");
+    p.appendChild(accountsSection());
+    p.appendChild(soulSection());
+    p.appendChild(accessSection());
+    p.appendChild(selfSection());
 
     var themeCard = card();
     var row = el("div", "row");
-    row.appendChild(el("h3", null, "Inverse field (blue mode)"));
+    row.appendChild(el("h3", null, "Light mode"));
     var sw = el("label", "switch");
     var cb = el("input"); cb.type = "checkbox"; cb.checked = S.settings.theme === "inverse";
     var kn = el("span", "knob");
     sw.appendChild(cb); sw.appendChild(kn); row.appendChild(sw);
     themeCard.appendChild(row);
-    themeCard.appendChild(el("div", null, "Gold on charcoal ↔ deep blue on light. Also lives in the rail footer."));
+    themeCard.appendChild(el("div", null, "Near-black ↔ warm sand. Also lives in the rail footer."));
     cb.onchange = function () { $("themeToggle").click(); };
     p.appendChild(themeCard);
 
@@ -413,15 +1572,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     };
     var reasonCard = card();
     row = el("div", "row");
-    row.appendChild(el("h3", null, "Reasoning output"));
+    row.appendChild(el("h3", null, "Show reasoning"));
     sw = el("label", "switch");
-    cb = el("input"); cb.type = "checkbox"; cb.checked = !!S.settings.reasoningOff;
+    cb = el("input"); cb.type = "checkbox"; cb.checked = !S.settings.reasoningOff; // on = shown
     kn = el("span", "knob");
     sw.appendChild(cb); sw.appendChild(kn); row.appendChild(sw);
     reasonCard.appendChild(row);
-    reasonCard.appendChild(el("div", null, "Off hides the thinking traces models stream before their answer. The models still reason; the transcript stays clean."));
+    reasonCard.appendChild(el("div", null, "On shows the thinking models stream before answering, in a separate fold above the answer. Off hides it completely — the models still reason."));
     cb.onchange = function () {
-      fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ reasoningOff: cb.checked }) })
+      fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ reasoningOff: !cb.checked }) })
         .then(function (r) { return r.json(); }).then(function (v) { S.settings = v; });
     };
     p.appendChild(reasonCard);
@@ -546,47 +1705,102 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   }
 
   function loadTranscript(id) {
-    get("/api/session?id=" + encodeURIComponent(id) + "&" + (S.profile ? "profile=" + S.profile : "")).then(function (d) {
+    detachActiveTurn();
+    var profile = S.profile, loadId = ++S.loadSeq;
+    get("/api/session?id=" + encodeURIComponent(id) + (profile ? "&profile=" + encodeURIComponent(profile) : "")).then(function (d) {
+      if (loadId !== S.loadSeq || profile !== S.profile) return;
       S.sessionId = id; feed.textContent = ""; setView("chat");
-      var firstUser = true;
+      // Keep crash-journal deltas at their original chronological position.
+      // A later final event upgrades that same bubble instead of duplicating it.
+      var pendingTurns = {}, finalizedTurns = {};
       (d.events || []).forEach(function (e) {
-        if (e.kind === "user-message") {
-          if (firstUser) { firstUser = false; return; } // title already shown by the rail
-          feed.appendChild(el("div", "msg user", e.text));
+        if (e.kind === "assistant-delta") {
+          if (!e.turnId || finalizedTurns[e.turnId]) return;
+          var pending = pendingTurns[e.turnId];
+          if (!pending) {
+            var bubble = el("div", "msg assistant partial");
+            bubble.appendChild(el("div", "pill", e.model || e.provider || "interrupted turn"));
+            var answer = el("div", "answer"); bubble.appendChild(answer);
+            bubble.appendChild(el("div", "turn-note", "Interrupted response recovered from the session journal."));
+            feed.appendChild(bubble);
+            pending = pendingTurns[e.turnId] = { bubble: bubble, answer: answer, text: "" };
+          }
+          pending.text += e.text || "";
+          renderMarkdown(pending.answer, pending.text);
+        } else if (e.kind === "user-message") {
+          feed.appendChild(el("div", "msg user", String(e.text).replace(/(\n\n\[Attached: [^\n]*\])(\n\[Attached: [^\n]*\])*$/, "")));
         } else if (e.kind === "assistant-text") {
-          var b = el("div", "msg assistant"); b.appendChild(el("div", "pill", e.model));
-          b.appendChild(el("div", null, e.text)); feed.appendChild(b);
+          finalizedTurns[e.turnId] = true;
+          var done = e.turnId && pendingTurns[e.turnId];
+          if (done) {
+            done.bubble.classList.remove("partial");
+            done.bubble.querySelector(".pill").textContent = e.model;
+            var note = done.bubble.querySelector(".turn-note"); if (note) note.remove();
+            renderMarkdown(done.answer, e.text);
+            delete pendingTurns[e.turnId];
+          } else {
+            var b = el("div", "msg assistant"); b.appendChild(el("div", "pill", e.model));
+            var finalAnswer = el("div", "answer"); renderMarkdown(finalAnswer, e.text);
+            b.appendChild(finalAnswer); feed.appendChild(b);
+          }
+        } else if (e.kind === "artifact" && e.note === "attachment") {
+          var users = feed.querySelectorAll(".msg.user"), lastUser = users[users.length - 1];
+          if (lastUser) {
+            var fr = lastUser.querySelector(".msg-files") || lastUser.appendChild(el("div", "msg-files"));
+            fr.appendChild(el("span", "file-chip", e.path.split("/").pop().replace(/^\d{8}-\d{6}-(\d+-)?/, "")));
+          }
+        } else if (e.kind === "artifact" && e.note === "output") {
+          var bubbles = feed.querySelectorAll(".msg.assistant"), lastB = bubbles[bubbles.length - 1];
+          if (lastB) artifactsRow(lastB).appendChild(artifactNode(id, { path: e.path }));
+        } else if (e.kind === "self-change") {
+          var sb = feed.querySelectorAll(".msg.assistant"), lastSb = sb[sb.length - 1];
+          if (lastSb) lastSb.appendChild(selfChangeCard(id, e));
+        } else if (e.kind === "self-revert") {
+          var done = feed.querySelector('.self-change[data-key="' + e.before + ":" + e.after + '"]');
+          if (done) markReverted(done, e);
         } else if (e.kind === "fallback") sysline("\u21b3 " + e.from + " \u2192 " + e.to, "fallback");
+        else if (e.kind === "turn-outcome") {
+          sysline((e.outcome === "interrupted" ? "⚠ Response interrupted" : "✗ Response failed") + (e.error ? ": " + e.error : ""), "error");
+        }
       });
     });
   }
-  function loadChatList() {
-    get("/api/sessions").then(function (d) {
+  function loadChatList(profile) {
+    profile = profile == null ? S.profile : profile;
+    var listId = ++S.listSeq;
+    get("/api/sessions" + (profile ? "?profile=" + encodeURIComponent(profile) : "")).then(function (d) {
+      if (listId !== S.listSeq || profile !== S.profile) return;
       var list = $("chatList"); list.textContent = "";
       (d.sessions || []).slice(0, 12).forEach(function (s) {
         var row = el("div", "chatrow" + (s.id === S.sessionId ? " active" : ""));
         var label = el("span", "chatlabel", s.title || s.id);
         label.onclick = function () { loadTranscript(s.id); loadChatList(); };
-        var del = el("button", "chatdel"); del.textContent = "\u2715"; del.title = "delete chat";
+        var del = el("button", "chatdel"); del.textContent = "\u2715"; del.title = "Delete session"; del.setAttribute("aria-label", "Delete session " + (s.title || s.id));
         del.onclick = function (ev) {
           ev.stopPropagation();
           fetch("/api/session?id=" + encodeURIComponent(s.id) + (S.profile ? "&profile=" + S.profile : ""), { method: "DELETE" })
-            .then(function (r) { return r.json(); })
+            .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.error || "Unable to delete this session."); return d; }); })
             .then(function () {
               if (S.sessionId === s.id) { S.sessionId = null; feed.textContent = ""; }
               loadChatList();
-            });
+            }).catch(function (err) { sysline("⚠ " + err.message, "error"); });
         };
         row.appendChild(label); row.appendChild(del); list.appendChild(row);
       });
     });
   }
-  // rehydrate the most recent conversation on boot, then list the rest
-  get("/api/sessions").then(function (d) {
-    var recent = (d.sessions || []).find(function (s) { return s.events > 1; });
-    if (recent) loadTranscript(recent.id);
+  // Rehydrate only after initial status resolves the active profile. The boot
+  // generation prevents a late startup response from replacing a user action.
+  function hydrateHistory(bootId) {
+    var profile = S.profile, loadId = ++S.loadSeq;
+    get("/api/sessions" + (profile ? "?profile=" + encodeURIComponent(profile) : "")).then(function (d) {
+      if (bootId !== S.bootSeq || loadId !== S.loadSeq || profile !== S.profile) return;
+      var recent = (d.sessions || []).find(function (s) { return s.events > 1; });
+    // don't pull an old thread back over a new session the user already started
+    if (recent && !S.fresh && !S.sessionId && !S.busy) loadTranscript(recent.id);
     loadChatList();
   });
+  }
 
   // ---------- workspace picker ----------
   function wsLabel(p) {
@@ -637,26 +1851,36 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         $("wsName").textContent = wsLabel(d.workspace);
         $("wsBtn").title = d.workspace;
         $("fsOverlay").hidden = true;
-        S.sessionId = null;
+        detachActiveTurn(); S.sessionId = null; S.loadSeq++;
         setView("chat");
         sysline("workspace → " + d.workspace, "route");
         loadStatus();
       });
   }
-  $("wsBtn").onclick = function () { fsBrowse(S.workspace || "~"); $("fsOverlay").hidden = false; };
-  $("fsCancel").onclick = function () { $("fsOverlay").hidden = true; };
+  function closeFolderPicker() { $("fsOverlay").hidden = true; $("wsBtn").focus(); }
+  $("wsBtn").onclick = function () { fsBrowse(S.workspace || "~"); $("fsOverlay").hidden = false; setTimeout(function () { $("fsCancel").focus(); }, 0); };
+  $("fsCancel").onclick = closeFolderPicker;
   $("fsHome").onclick = function () { fsBrowse("~"); };
   $("fsChoose").onclick = function () { chooseFolder(S.fsDir); };
-  $("fsOverlay").addEventListener("click", function (e) { if (e.target === this) this.hidden = true; });
+  $("fsOverlay").addEventListener("click", function (e) { if (e.target === this) closeFolderPicker(); });
+  document.addEventListener("keydown", function (e) {
+    if ($("fsOverlay").hidden) return;
+    if (e.key === "Escape") closeFolderPicker();
+    else trapTab(e, $("fsOverlay"));
+  });
 
   // ---------- status / boot ----------
   function loadUsageChips() { loadStatus(); }
   function loadStatus() {
-    return get("/api/status" + qs()).then(function (d) {
+    var profile = S.profile, statusId = ++S.statusSeq, themeSeq = S.themeSeq;
+    return get("/api/status" + (profile ? "?profile=" + encodeURIComponent(profile) : "")).then(function (d) {
+      if (statusId !== S.statusSeq || (profile && profile !== S.profile)) return;
       try {
+      if (!S.profile) S.profile = d.profile;
       S.status = d;
-      S.settings = d.settings || S.settings;
-      if (document.documentElement.dataset.theme !== S.settings.theme) applyTheme(S.settings.theme);
+      var incomingSettings = d.settings || {};
+      S.settings = S.themePinned || themeSeq !== S.themeSeq ? { ...incomingSettings, ...S.settings } : { ...S.settings, ...incomingSettings };
+      if (!S.themePinned && themeSeq === S.themeSeq && document.documentElement.dataset.theme !== S.settings.theme) applyTheme(S.settings.theme);
       renderModelPick();
       S.workspace = d.workspace || S.workspace;
       $("wsName").textContent = wsLabel(S.workspace);
@@ -665,7 +1889,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       var pills = $("pills"); pills.textContent = "";
       (d.profiles || []).forEach(function (pr) {
         var b = el("button", "pill" + (pr === d.profile ? " active" : ""), pr);
-        b.onclick = function () { S.profile = pr; S.sessionId = null; feed.textContent = ""; load(); loadChatList(); };
+        b.onclick = function () {
+          detachActiveTurn(); S.bootSeq++; S.profile = pr; S.sessionId = null; S.fresh = false; S.loadSeq++; feed.textContent = "";
+          loadStatus(); loadChatList();
+        };
         pills.appendChild(b);
       });
       var chips = $("chips"); chips.textContent = "";
@@ -702,10 +1929,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     }).catch(function (e) { feed.appendChild(el("div", "sys error", "status fetch failed: " + e.message)); });
   }
 
-  // ---------- signature: hover types lancesmith.cc in (as on agentic.lancesmith.cc) ----------
+  // ---------- signature: hover types harness in ----------
   (function () {
     var sig = $("brandSig"), domain = $("sigDomain");
-    var full = "lancesmith.cc", n = 0, timer = null;
+    var full = "harness", n = full.length, timer = null;
     function render() { domain.textContent = full.slice(0, n); }
     function typeIn() {
       sig.classList.add("is-hovered");
@@ -715,11 +1942,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     function typeOut() {
       sig.classList.remove("is-hovered");
       clearInterval(timer);
-      timer = setInterval(function () { if (n > 0) { n--; render(); } else clearInterval(timer); }, 22);
+      render();
     }
     sig.addEventListener("mouseenter", typeIn);
     sig.addEventListener("mouseleave", typeOut);
     sig.addEventListener("click", function (e) { e.preventDefault(); });
+    render();
   })();
 
   // ---------- ambient: cursor glow ----------
@@ -743,7 +1971,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     applyTheme(S.settings.theme);
   }).catch(function () { S.verbs = ["Crystallizing"]; });
   window.__ls = loadStatus; window.__S = S;
-  loadStatus();
+  var initialBoot = ++S.bootSeq;
+  loadStatus().then(function () {
+    if (initialBoot === S.bootSeq && S.profile) hydrateHistory(initialBoot);
+  });
   setView("chat");
 })();
 </script>

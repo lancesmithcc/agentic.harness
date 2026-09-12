@@ -22,8 +22,8 @@ function makeModels(): Model[] {
     mk("zai/glm-5.3-flash", { coding: 8, reasoning: 7, billing: "coding-plan", context: 128000 }),
     mk("zai/glm-5.3", { coding: 9, reasoning: 9, billing: "coding-plan", context: 128000 }),
     mk("kimi/k3", { coding: 10, reasoning: 10, context: 262144, billing: "coding-plan", thinking: true }),
-    mk("deepseek/deepseek-v4-pro", { coding: 9, reasoning: 9, billing: "api", context: 128000 }),
-    mk("claude-code/default", { coding: 10, reasoning: 10, billing: "subscription", context: 200000 }),
+    mk("deepseek/deepseek-v4-pro", { coding: 9, reasoning: 9, billing: "api", context: 128000, tools: true }),
+    mk("claude-code/default", { coding: 10, reasoning: 10, billing: "subscription", context: 200000, tools: true }),
   ];
 }
 
@@ -120,5 +120,37 @@ describe("router.route", () => {
       escalate: true,
     });
     expect(res.selected).not.toBe("local/gemma-4-12b-it");
+  });
+
+  test("action tasks exclude text-only adapters from selection and fallback", () => {
+    const models = [
+      mk("api/text", { coding: 10, reasoning: 10, billing: "api", tools: false }),
+      mk("agent/runner", { coding: 7, reasoning: 7, billing: "subscription", tools: true }),
+    ];
+    const res = R({ task: "fix the failing test and run it", models, health: new Map() });
+    expect(res.selected).toBe("agent/runner");
+    expect(res.fallbacks).not.toContain("api/text");
+  });
+
+  test("action tasks return no route when only text adapters are healthy", () => {
+    const res = R({ task: "fix this file", models: [mk("api/text", { coding: 10, tools: false })], health: new Map() });
+    expect(res.selected).toBe("none");
+  });
+  test("manual pins cannot pretend text-only adapters execute tools", () => {
+    const res = R({ task: "fix this file", models: makeModels(), health: health(), pinnedModel: "kimi/k3" });
+    expect(res.selected).toBe("none");
+    expect(res.reason.join(" ")).toContain("text replies only");
+  });
+  test("manual agent fallbacks exclude unhealthy and text-only providers", () => {
+    const res = R({ task: "fix this file", models: makeModels(), health: health("deepseek"), pinnedModel: "claude-code/default" });
+    expect(res.selected).toBe("claude-code/default");
+    expect(res.fallbacks).toEqual([]);
+  });
+
+  test("frontmatter reports only actually unresolved references", () => {
+    const delegation = parseDelegation(["---", "routing:", "  simple: [gemma-local, absent-model]", "---"].join("\n"));
+    const res = R({ task: "summarize this", models: makeModels(), health: health(), delegation });
+    expect(res.reason.join(" ")).toContain('could not resolve "absent-model"');
+    expect(res.reason.join(" ")).not.toContain('could not resolve "gemma-local"');
   });
 });

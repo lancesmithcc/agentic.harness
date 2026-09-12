@@ -1,18 +1,22 @@
-# DeepHarness
+# agentic.harness
 
 **One agent environment, many minds.**
 
-A local agent runtime (macOS CLI today, Tauri shell later) that gives one interface to many coding and reasoning models. The harness reads your task, the project context, provider availability, capability metadata, and — above all — your `delegation.md`, then sends each part of the work to the most suitable model.
+A local agent runtime with a web interface, macOS desktop app, and CLI. The harness reads your task, project context, provider availability, capability metadata, and `delegation.md`, then routes the work to a suitable model. Its name and runtime identity are **agentic.harness**; existing `~/.deepharness` data paths remain compatible.
 
 ## Quick start
 
 ```bash
 bun install
-bun test                          # 18 unit tests
+bun test                          # isolated unit and integration tests
 bun apps/cli/bin/harness status   # provider matrix for the active profile
 ```
 
-A `harness` symlink is installed at `~/.local/bin/harness` (Bun required).
+Run `bun apps/cli/bin/harness` directly, or link it into your PATH as `harness` (Bun required).
+
+Source repository: [lancesmithcc/agentic.harness](https://github.com/lancesmithcc/agentic.harness).
+
+For the web interface, run `bun apps/web/src/server.ts` and open `http://127.0.0.1:8790`. Build the native macOS app using [the desktop guide](apps/desktop/README.md).
 
 ## The fleet
 
@@ -23,11 +27,12 @@ A `harness` symlink is installed at `~/.local/bin/harness` (Bun required).
 | Z.AI | Coding Plan key | `api.z.ai/api/coding/paas/v4` |
 | Kimi | Coding Plan key | `api.kimi.com/coding/v1` (k3, k3-256k, kimi-for-coding, highspeed) |
 | DeepSeek | API key | `api.deepseek.com` |
+| DeepSeek Harness | Same DeepSeek key | Official SDK `0.1.5-rc.2`, with file and shell tools, native session logging, and context compaction |
 | MiniMax | API key | `api.minimax.io/v1` |
 | OpenRouter | API key | dynamic model discovery |
 | Local | none | llama.cpp / Ollama / LM Studio / MLX autodetect (e.g. gemma-4-12b-it on :8088) |
 
-Subscription credentials stay owned by their official CLIs. API keys live in the macOS Keychain — config files only hold `keychain://harness/<profile>/<provider>` references.
+Subscription credentials stay owned by their official CLIs. API keys can come from the local process environment or macOS Keychain; committed config files should only hold `keychain://harness/<profile>/<provider>` references.
 
 ## Profiles
 
@@ -103,6 +108,14 @@ Sessions are provider-neutral event logs: a conversation can move Gemma → Deep
 
 The planner/worker/reviewer pipeline routes each role independently and enforces the delegation.md verification rule: **a model never reviews its own major implementation** — the reviewer is chosen from a different provider whenever the fleet allows.
 
-## Non-goals (v1)
+## Self-evolve
 
-No editor, no terminal emulator, no cloud sync, no multi-user, no hosted inference, no billing management. The CLI/runtime comes first; Tauri becomes the shell once the engine is boringly reliable.
+With Self-evolve enabled, file-capable agents can rewrite any part of the harness source when asked: UI, runtime, routing, providers, desktop shell, build tools, and tests. Read-only access still prevents writes. Explicit self-evolve tasks use the source checkout as their working directory.
+
+The app records before/after commits on `self-evolve`, syncs them to GitHub, and exposes a file-aware rollback action. Rollback creates another commit and preserves newer local edits. `main` holds the published application; checkpoint sync never force-pushes or changes the checked-out branch or staging area. Offline checkpoints remain local with visible sync status and retry.
+
+Read the [self-evolve workflow](docs/SELF_EVOLVE.md) for recovery and rebuild steps. An installed desktop bundle must be rebuilt and reinstalled to run changed source.
+
+## Verification
+
+`bun test`, `bun run typecheck`, and `node scripts/ui-regression.mjs` exercise isolated chat persistence, routing, provider protocols, source checkpoints, rollback, and rendered UI. See [the review record](docs/GAUNTLET.md) for live runtime evidence and limits.

@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "harness-page",
+  "description": "The harness UI served on 127.0.0.1 may only move and zoom the window (title-bar drag regions).",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:8790/*"]
+  },
+  "permissions": ["core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize"]
+}

@@ -106,12 +106,16 @@ export class LocalProvider implements ModelProvider {
   }
 
   capabilities(model: string): ModelCapabilities {
-    return { ...LOCAL_CAPS };
+    return { ...LOCAL_CAPS, tools: false };
   }
 
   async *generate(request: HarnessRequest): AsyncIterable<HarnessEvent> {
     const model = request.model.includes("/") ? request.model.split("/").slice(1).join("/") : request.model;
     const started = Date.now();
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(new Error("local request timed out")), request.timeoutMs ?? 90_000);
+    const onAbort = () => controller.abort(request.signal?.reason ?? new Error("request cancelled"));
+    request.signal?.addEventListener("abort", onAbort, { once: true });
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -131,12 +135,14 @@ export class LocalProvider implements ModelProvider {
           max_tokens: request.maxTokens,
           temperature: request.temperature,
         }),
-        signal: AbortSignal.timeout(600000),
+        signal: controller.signal,
       });
     } catch (err) {
+      clearTimeout(deadline);
+      request.signal?.removeEventListener("abort", onAbort);
       yield {
         type: "error",
-        error: harnessError("unavailable", `local server ${this.endpoint.url} unreachable: ${(err as Error).message}`, {
+        error: harnessError(request.signal?.aborted ? "aborted" : "unavailable", `local server ${this.endpoint.url} unreachable: ${(err as Error).message}`, {
           provider: this.id,
           model,
         }),
@@ -157,6 +163,8 @@ export class LocalProvider implements ModelProvider {
         }),
         fatal: true,
       };
+      clearTimeout(deadline);
+      request.signal?.removeEventListener("abort", onAbort);
       return;
     }
 
@@ -166,7 +174,7 @@ export class LocalProvider implements ModelProvider {
     let finishReason: string | undefined;
     let usage: UsageReport | null = null;
 
-    for await (const chunk of res.body) {
+    try { for await (const chunk of res.body) {
       buf += decoder.decode(chunk as Uint8Array, { stream: true });
       const lines = buf.split("\n");
       buf = lines.pop() ?? "";
@@ -201,6 +209,12 @@ export class LocalProvider implements ModelProvider {
           };
         }
       }
+    } } catch (err) {
+      yield { type: "error", error: harnessError(request.signal?.aborted ? "aborted" : "unavailable", (err as Error).message, { provider: this.id, model, retryable: !request.signal?.aborted }), fatal: true };
+      return;
+    } finally {
+      clearTimeout(deadline);
+      request.signal?.removeEventListener("abort", onAbort);
     }
 
     if (usage) yield { type: "usage", usage };

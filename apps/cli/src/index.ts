@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * DeepHarness CLI — one agent environment, many minds.
+ * agentic.harness CLI — one agent environment, many minds.
  */
 import { Command, Option } from "commander";
 import {
@@ -15,12 +15,13 @@ import { buildFleet, fleetModels } from "@harness/providers";
 import { findDelegationDoc, parseDelegation, route } from "@harness/router";
 import { scanSkills } from "@harness/skills";
 import { scanTools } from "@harness/tools";
-import { compileContext } from "@harness/context";
+import { buildSelfKnowledge, compileContext, findSourceRoot } from "@harness/context";
 import { loginSubscription } from "@harness/profiles";
 import { SessionStore, listSessions, usageSummary } from "@harness/sessions";
 import { askRouted, runPipeline, type OrchestratorContext } from "./orchestrator.ts";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ProviderHealth } from "@harness/core";
 
 const program = new Command();
@@ -31,7 +32,7 @@ program
   .addOption(new Option("--profile <name>", "one-off profile override (home|work)").choices(["home", "work"]));
 
 function currentProfile(opts: { profile?: string }): string {
-  return opts.profile ?? activeProfileName();
+  return opts.profile ?? program.opts().profile ?? activeProfileName();
 }
 
 async function buildContext(profile: string, opts: { noHealth?: boolean } = {}): Promise<OrchestratorContext> {
@@ -49,7 +50,6 @@ async function buildContext(profile: string, opts: { noHealth?: boolean } = {}):
   const delegationDoc = findDelegationDoc(loaded.projectDir, HARNESS_HOME, profile);
   const delegation = delegationDoc ? parseDelegation(delegationDoc.text, delegationDoc.path) : null;
   const session = new SessionStore(profile);
-  session.append({ v: 1, ts: new Date().toISOString(), kind: "session-start", sessionId: session.sessionId, profile, cwd: process.cwd() });
   return { providers: fleet.providers, models, health, delegation, session, profile };
 }
 
@@ -105,34 +105,60 @@ program
     const task = taskParts.join(" ");
     const ctx = await buildContext(profile);
     const session = opts.session ? new SessionStore(profile, opts.session) : ctx.session;
+    if (opts.session && !existsSync(session.filePath)) throw new Error(`Session ${opts.session} does not exist in profile ${profile}`);
+    if (!opts.session) session.append({ v: 1, ts: new Date().toISOString(), kind: "session-start", sessionId: session.sessionId, profile, cwd: process.cwd() });
+    ctx.session = session;
     session.append({ v: 1, ts: new Date().toISOString(), kind: "user-message", text: task });
 
     const history = session.messages().slice(0, -1);
-    const decision0 = route({ task, models: ctx.models, health: ctx.health, delegation: ctx.delegation, escalate: opts.escalate });
+    const pin = opts.auto ? undefined : opts.model;
+    const decision0 = route({ task, models: ctx.models, health: ctx.health, delegation: ctx.delegation, escalate: opts.escalate, pinnedModel: pin });
     const target = ctx.models.find((m) => m.id === decision0.selected);
     const messages = target
-      ? compileContext(task, target, { cwd: process.cwd(), history })
+      ? compileContext(task, target, {
+          cwd: process.cwd(),
+          history,
+          // the CLI knows itself but runs agents read-only, so self-evolve is off here
+          self: buildSelfKnowledge({
+            sourceRoot: findSourceRoot(dirname(fileURLToPath(import.meta.url))),
+            profile,
+            workspace: process.cwd(),
+            access: "read-only",
+            selfEvolve: false,
+            client: "cli",
+          }),
+        })
       : [{ role: "user" as const, content: task }];
 
-    const pin = opts.auto ? undefined : opts.model;
     if (!opts.json) {
       console.error(
         pin
-          ? `→ pinned ${pin} (auto would pick ${decision0.selected})`
+          ? `→ pinned ${decision0.selected}`
           : `→ ${decision0.selected} (${decision0.category}, confidence ${decision0.confidence.toFixed(2)})${decision0.fallbacks.length ? `  fallbacks: ${decision0.fallbacks.join(", ")}` : ""}`,
       );
     }
-    const result = await askRouted(ctx, task, messages, { pinnedModel: pin, escalate: opts.escalate, onEvent: (e) => {
-      if (opts.json || e.type !== "text-delta") return;
-      process.stdout.write(e.text);
-    } });
+    const abort = new AbortController();
+    const stop = () => abort.abort();
+    process.once("SIGINT", stop);
+    let streamed = false;
+    let result;
+    try {
+      result = await askRouted(ctx, task, messages, { pinnedModel: pin, escalate: opts.escalate, request: { cwd: process.cwd(), access: "read-only", signal: abort.signal }, onEvent: (e) => {
+        if (opts.json || e.type !== "text-delta") return;
+        streamed = true;
+        process.stdout.write(e.text);
+      } });
+    } finally { process.removeListener("SIGINT", stop); }
     if (opts.json) {
-      console.log(JSON.stringify({ ...result, decision: result.decision }, null, 2));
+      console.log(JSON.stringify({ ...result, sessionId: session.sessionId }, null, 2));
     } else {
+      if (!streamed) process.stdout.write(result.text);
       if (!result.text.endsWith("\n")) console.log();
       for (const fb of result.fellBack) console.error(`↳ ${fb.from} unavailable (${fb.cause}); continued with ${fb.to}`);
-      console.error(`✓ ${result.modelUsed} · session ${session.sessionId}${result.usage.inputTokens ? ` · ${result.usage.inputTokens}→${result.usage.outputTokens} tok` : ""}`);
+      console.error(`${result.outcome === "completed" ? "✓" : "!"} ${result.modelUsed} · session ${session.sessionId}${result.usage.inputTokens ? ` · ${result.usage.inputTokens}→${result.usage.outputTokens} tok` : ""}`);
+      if (result.error) console.error(result.error);
     }
+    if (result.outcome !== "completed") process.exitCode = abort.signal.aborted ? 130 : 1;
   });
 
 program
@@ -356,6 +382,8 @@ program
     const profile = currentProfile(opts);
     const task = taskParts.join(" ");
     const ctx = await buildContext(profile);
+    ctx.session.append({ v: 1, ts: new Date().toISOString(), kind: "session-start", sessionId: ctx.session.sessionId, profile, cwd: process.cwd() });
+    ctx.session.append({ v: 1, ts: new Date().toISOString(), kind: "user-message", text: task });
     console.log(`Task: ${task}\n`);
     const result = await runPipeline(ctx, task, {
       onAgentStart: (role, model) => console.log(`\n━━ ${role} → ${model}`),

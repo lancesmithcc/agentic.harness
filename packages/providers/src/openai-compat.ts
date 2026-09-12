@@ -30,6 +30,29 @@ function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/** Bound connection lifetime and stream silence, while preserving caller aborts. */
+function boundedSignal(request: HarnessRequest, idleMs = 30_000): {
+  signal: AbortSignal; touch(): void; dispose(): void; abortedByCaller(): boolean;
+} {
+  const controller = new AbortController();
+  let idle: ReturnType<typeof setTimeout> | undefined;
+  const abort = (reason: unknown) => { if (!controller.signal.aborted) controller.abort(reason); };
+  const total = setTimeout(() => abort(new Error("provider request timed out")), request.timeoutMs ?? 90_000);
+  const onAbort = () => abort(request.signal?.reason ?? new Error("request cancelled"));
+  request.signal?.addEventListener("abort", onAbort, { once: true });
+  if (request.signal?.aborted) onAbort();
+  const touch = () => {
+    if (idle) clearTimeout(idle);
+    idle = setTimeout(() => abort(new Error("provider stream idle timeout")), idleMs);
+  };
+  touch();
+  return {
+    signal: controller.signal, touch,
+    dispose: () => { clearTimeout(total); if (idle) clearTimeout(idle); request.signal?.removeEventListener("abort", onAbort); },
+    abortedByCaller: () => request.signal?.aborted === true,
+  };
+}
+
 export abstract class OpenAICompatProvider implements ModelProvider {
   readonly kind = "api" as const;
   protected sendStreamOptions = true;
@@ -45,7 +68,9 @@ export abstract class OpenAICompatProvider implements ModelProvider {
   ) {}
 
   capabilities(model: string): ModelCapabilities {
-    return { ...(this.opts.defaultCapabilities ?? {}), ...(this.opts.capabilitiesSeed?.[model] ?? {}) };
+    // This adapter only streams text. It does not submit tool definitions or
+    // execute returned calls, so routing must never treat it as tool-capable.
+    return { ...(this.opts.defaultCapabilities ?? {}), ...(this.opts.capabilitiesSeed?.[model] ?? {}), tools: false };
   }
 
   private apiKey(): string | null {
@@ -109,13 +134,16 @@ export abstract class OpenAICompatProvider implements ModelProvider {
       temperature: request.temperature,
       ...(this.sendStreamOptions ? { stream_options: { include_usage: true } } : {}),
     });
+    const bounds = boundedSignal(request);
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: "POST", headers, body, signal: AbortSignal.timeout(300_000),
+        method: "POST", headers, body, signal: bounds.signal,
       });
     } catch (e) {
-      yield { type: "error", error: harnessError("unavailable", errMsg(e), { provider: this.id, model, retryable: true }), fatal: true };
+      const code = bounds.abortedByCaller() ? "aborted" : "unavailable";
+      yield { type: "error", error: harnessError(code, errMsg(e), { provider: this.id, model, retryable: code !== "aborted" }), fatal: true };
+      bounds.dispose();
       return;
     }
     if (!res.ok || !res.body) {
@@ -128,28 +156,61 @@ export abstract class OpenAICompatProvider implements ModelProvider {
       else if (status === 400 && /context|length|token limit/i.test(errText)) code = "context-length";
       else if (status >= 500) retryable = true;
       yield { type: "error", error: harnessError(code, `${status} ${errText.slice(0, 400)}`, { provider: this.id, model, status, retryable }), fatal: code === "auth" };
+      bounds.dispose();
       return;
     }
     const reader = res.body.getReader(), decoder = new TextDecoder();
-    let carry = "", text = "", ended = false;
+    let carry = "", text = "", ended = false, sawDoneSentinel = false;
     let finishReason: string | undefined, usage: UsageReport | undefined;
+    let protocolError: string | null = null;
+    // Some servers (MiniMax, raw DeepSeek/Qwen chat templates) inline reasoning
+    // in content as <think>…</think>. Split it out so it never lands in the answer.
+    let inThink = false, tagCarry = "";
+    const emitPart = (t: string, out: HarnessEvent[]) => {
+      if (inThink) { out.push({ type: "reasoning-delta", text: t }); return; }
+      if (!text) t = t.replace(/^\s+/, ""); // drop the blank lines left behind </think>
+      if (!t) return;
+      text += t; out.push({ type: "text-delta", text: t });
+    };
+    const splitThink = (chunk: string, out: HarnessEvent[]) => {
+      let s = tagCarry + chunk;
+      tagCarry = "";
+      while (s) {
+        const tag = inThink ? "</think>" : "<think>";
+        const i = s.indexOf(tag);
+        if (i < 0) {
+          // hold back a partial tag split across chunks
+          let keep = 0;
+          for (let k = Math.min(tag.length - 1, s.length); k > 0; k--) if (tag.startsWith(s.slice(-k))) { keep = k; break; }
+          if (s.length > keep) emitPart(s.slice(0, s.length - keep), out);
+          tagCarry = s.slice(s.length - keep);
+          return;
+        }
+        if (i > 0) emitPart(s.slice(0, i), out);
+        inThink = !inThink;
+        s = s.slice(i + tag.length);
+      }
+    };
     const onLine = (raw: string): HarnessEvent[] => {
       const out: HarnessEvent[] = [];
       const line = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
       if (!line.startsWith("data:")) return out;
       const payload = line.slice(5).trim();
-      if (payload === "[DONE]") { ended = true; return out; }
+      if (payload === "[DONE]") { ended = true; sawDoneSentinel = true; return out; }
       let parsed: any;
-      try { parsed = JSON.parse(payload); } catch { return out; }
+      try { parsed = JSON.parse(payload); }
+      catch { protocolError = "provider sent malformed SSE JSON"; ended = true; return out; }
+      if (parsed?.error) {
+        const detail = typeof parsed.error === "string" ? parsed.error : typeof parsed.error?.message === "string" ? parsed.error.message : JSON.stringify(parsed.error);
+        protocolError = `provider error: ${detail.slice(0, 400)}`;
+        ended = true;
+        return out;
+      }
       const choice = parsed.choices?.[0];
       const delta = choice?.delta ?? {};
-      if (typeof delta.content === "string" && delta.content) {
-        text += delta.content; out.push({ type: "text-delta", text: delta.content });
-      }
       if (typeof delta.reasoning_content === "string" && delta.reasoning_content) out.push({ type: "reasoning-delta", text: delta.reasoning_content });
-      if (Array.isArray(delta.tool_calls)) {
-        for (const tc of delta.tool_calls) out.push({ type: "tool-call", id: tc?.id ?? "", name: tc?.function?.name ?? "", arguments: tc?.function?.arguments ?? "" });
-      }
+      else if (typeof delta.reasoning === "string" && delta.reasoning) out.push({ type: "reasoning-delta", text: delta.reasoning });
+      if (typeof delta.content === "string" && delta.content) splitThink(delta.content, out);
       if (choice?.finish_reason) finishReason = choice.finish_reason;
       if (parsed.usage) {
         const u = parsed.usage;
@@ -168,6 +229,7 @@ export abstract class OpenAICompatProvider implements ModelProvider {
       while (!ended) {
         const { done, value } = await reader.read();
         if (done) break;
+        bounds.touch();
         carry += decoder.decode(value, { stream: true });
         for (let nl = carry.indexOf("\n"); nl >= 0; nl = carry.indexOf("\n")) {
           const line = carry.slice(0, nl);
@@ -183,13 +245,46 @@ export abstract class OpenAICompatProvider implements ModelProvider {
           if (ended) break;
         }
       }
+      if (tagCarry) {
+        const out: HarnessEvent[] = [];
+        const rest = tagCarry;
+        tagCarry = "";
+        emitPart(rest, out);
+        for (const ev of out) yield ev;
+      }
     } catch (e) {
-      yield { type: "error", error: harnessError("unavailable", errMsg(e), { provider: this.id, model, retryable: true }), fatal: true };
+      const code = bounds.abortedByCaller() ? "aborted" : "unavailable";
+      yield { type: "error", error: harnessError(code, errMsg(e), { provider: this.id, model, retryable: code !== "aborted" }), fatal: true };
       return;
+    } finally {
+      // Generators can be stopped by a consumer before EOF. Release the
+      // reader and every timer/listener in that path as well as normal EOF.
+      try { await reader.cancel(); } catch { /* body already closed */ }
+      try { reader.releaseLock(); } catch { /* already released */ }
+      bounds.dispose();
     }
     this.lastUsage = usage ?? null;
     if (usage) yield { type: "usage", usage };
     yield { type: "model-call", model, provider: this.id, latencyMs: Date.now() - started };
+    if (protocolError) {
+      yield { type: "error", error: harnessError("provider-error", protocolError, { provider: this.id, model }), fatal: true };
+      return;
+    }
+    if (finishReason && finishReason !== "stop") {
+      const detail = finishReason === "length"
+        ? "provider stopped because the output reached its length limit"
+        : finishReason === "content_filter"
+          ? "provider stopped due to content filtering"
+          : finishReason === "tool_calls"
+            ? "provider requested tool calls, which this text-only adapter cannot execute"
+            : `provider stopped with finish_reason ${finishReason}`;
+      yield { type: "error", error: harnessError("provider-error", detail, { provider: this.id, model }), fatal: true };
+      return;
+    }
+    if (!sawDoneSentinel && finishReason !== "stop") {
+      yield { type: "error", error: harnessError("provider-error", "provider stream ended without a completion marker", { provider: this.id, model }), fatal: true };
+      return;
+    }
     yield { type: "done", ...(finishReason ? { finishReason } : {}), text };
   }
 }

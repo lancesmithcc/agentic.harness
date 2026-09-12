@@ -17,7 +17,7 @@ beforeAll(async () => {
     `[providers.deepseek]\napi_key = "keychain://harness/home/deepseek"\n`,
   );
   mkdirSync(join(home, "project", ".harness"), { recursive: true });
-  writeFileSync(join(home, "project", ".harness", "config.toml"), `[defaults]\nmodel = "kimi/k3"\n`);
+  writeFileSync(join(home, "project", ".harness", "config.toml"), `[defaults]\nmodel = "kimi/k3"\n\n[providers.deepseek]\nenabled = false\n`);
 
   mod = await import("./config.ts");
 });
@@ -52,6 +52,7 @@ describe("config", () => {
   test("loadConfig merges project defaults", () => {
     const cfg: any = mod.loadConfig("home", join(home, "project"));
     expect(cfg.profile.defaults.model).toBe("kimi/k3");
+    expect(cfg.profile.providers.deepseek.enabled).toBe(false);
     expect(cfg.projectDir.endsWith(".harness")).toBe(true);
   });
 });

@@ -30,6 +30,18 @@ export interface HarnessRequest {
   agentRole?: string;
   /** Human-readable description of the job, used in logs and routing records. */
   taskLabel?: string;
+  /** Working folder for agentic adapters (CLI agents run here). */
+  cwd?: string;
+  /** File/tool autonomy for agentic adapters. Adapters default to "read-only". */
+  access?: "read-only" | "workspace" | "full";
+  /** Claude-style MCP JSON config file to load (CLI agents). */
+  mcpConfig?: string;
+  /** Hard ceiling for one call in ms (CLI adapters default to 90s). */
+  timeoutMs?: number;
+  /** Extra folders agentic adapters may use beyond cwd (self-evolve adds the harness source root). */
+  addDirs?: string[];
+  /** Cancels this request. Providers must stop their transport and subprocesses. */
+  signal?: AbortSignal;
 }
 
 /** Streaming events emitted by every provider generate() call. */
@@ -74,6 +86,9 @@ export interface HarnessError extends Error {
   retryable?: boolean;
   status?: number;
 }
+
+/** Terminal state for one routed model attempt. */
+export type TurnOutcome = "completed" | "interrupted" | "failed";
 
 export interface ModelCapabilities {
   /** 0-10 subjective capability scores; sourced from config, refined over time. */
@@ -164,7 +179,11 @@ export type SessionEvent =
       decision: RoutingDecision;
     }
   | { v: 1; ts: string; kind: "model-call"; provider: string; model: string; latencyMs: number }
-  | { v: 1; ts: string; kind: "assistant-text"; text: string; provider: string; model: string }
+  /** Durable streamed text. A later assistant-text with this turnId commits it. */
+  | { v: 1; ts: string; kind: "assistant-delta"; turnId: string; text: string; provider: string; model: string }
+  | { v: 1; ts: string; kind: "assistant-text"; text: string; provider: string; model: string; turnId?: string }
+  /** Records a non-successful terminal state so restored history is honest. */
+  | { v: 1; ts: string; kind: "turn-outcome"; provider: string; model: string; outcome: Exclude<TurnOutcome, "completed">; error?: string }
   | { v: 1; ts: string; kind: "tool-call"; id: string; name: string; arguments: string }
   | { v: 1; ts: string; kind: "usage"; usage: UsageReport; provider: string; model: string }
   | {
@@ -176,4 +195,7 @@ export type SessionEvent =
       cause: string;
     }
   | { v: 1; ts: string; kind: "artifact"; path: string; note?: string }
-  | { v: 1; ts: string; kind: "session-end"; reason: string };
+  | { v: 1; ts: string; kind: "session-end"; reason: string }
+  /** The agent changed the harness's own source this turn (git tree checkpoints before/after). */
+  | { v: 1; ts: string; kind: "self-change"; root: string; before: string; after: string; beforeCommit?: string; afterCommit?: string; branch?: string; repoUrl?: string; files: Array<{ status: string; path: string }> }
+  | { v: 1; ts: string; kind: "self-revert"; before: string; after: string; reverted: string[]; skipped: string[]; checkpoint?: { beforeCommit?: string; afterCommit?: string; branch?: string; repoUrl?: string } };

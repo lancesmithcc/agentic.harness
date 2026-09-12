@@ -9,6 +9,7 @@ import { ClaudeCodeProvider } from "./claude-code.ts";
 import { CodexProvider } from "./codex.ts";
 import { LocalProvider, detectLocalEndpoints, type LocalEndpoint } from "./local.ts";
 import { DeepSeekProvider } from "./deepseek.ts";
+import { DeepSeekHarnessProvider } from "./deepseek-harness.ts";
 import { ZAIProvider } from "./zai.ts";
 import { KimiProvider } from "./kimi.ts";
 import { MiniMaxProvider } from "./minimax.ts";
@@ -21,6 +22,18 @@ export interface Fleet {
   config: ProfileConfig;
 }
 
+async function boundedModels(provider: ModelProvider, timeoutMs: number): Promise<Model[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race<Model[]>([
+      provider.models(),
+      new Promise<Model[]>((_, reject) => { timer = setTimeout(() => reject(new Error(`${provider.id} model discovery timed out`)), timeoutMs); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 const API_PROVIDER_FACTS: Record<string, { envVar: string; make: (key: string | null) => ModelProvider }> = {
   deepseek: { envVar: "DEEPSEEK_API_KEY", make: (k) => new DeepSeekProvider(k) },
   zai: { envVar: "ZAICODINGPLAN_KEY", make: (k) => new ZAIProvider(k) },
@@ -30,10 +43,11 @@ const API_PROVIDER_FACTS: Record<string, { envVar: string; make: (key: string | 
   openai: { envVar: "OPENAI_KEY", make: (k) => new OpenAIProvider(k) },
 };
 
-export async function buildFleet(profileName?: string): Promise<Fleet> {
+/** Build against the caller's workspace so .harness provider overrides apply. */
+export async function buildFleet(profileName?: string, cwd?: string): Promise<Fleet> {
   const { loadConfig: lc, activeProfileName } = await import("@harness/core");
   const profile = profileName ?? activeProfileName();
-  const loaded = lc(profile);
+  const loaded = lc(profile, cwd);
   const config = loaded.profile;
   const providers = new Map<string, ModelProvider>();
 
@@ -53,6 +67,18 @@ export async function buildFleet(profileName?: string): Promise<Fleet> {
     providers.set(id, facts.make(apiKey));
   }
 
+  // Official DeepSeek Harness SDK: agentic runtime with real file/shell/plugin
+  // execution. Keep it separate from the text-only OpenAI-compatible adapter.
+  const deepseekHarnessConfig = config.providers["deepseek-harness"];
+  if (deepseekHarnessConfig?.enabled !== false) {
+    const { SecretStore } = await import("@harness/core");
+    const keyRef = deepseekHarnessConfig?.apiKey ?? config.providers.deepseek?.apiKey;
+    const deepseekKey = keyRef
+      ? resolveSecret(keyRef, "DEEPSEEK_API_KEY")
+      : (process.env.DEEPSEEK_API_KEY ?? new SecretStore(profile).get("deepseek-harness") ?? new SecretStore(profile).get("deepseek") ?? null);
+    if (deepseekKey || deepseekHarnessConfig) providers.set("deepseek-harness", new DeepSeekHarnessProvider(profile, deepseekKey));
+  }
+
   // Local endpoints: configured ones first, then autodetected.
   const localEndpoints: LocalEndpoint[] = [...(config.local?.endpoints ?? [])];
   const detected = await detectLocalEndpoints();
@@ -68,12 +94,14 @@ export async function buildFleet(profileName?: string): Promise<Fleet> {
   return { profile, providers, config };
 }
 
-export async function fleetModels(fleet: Fleet): Promise<Model[]> {
+/** Model discovery is best-effort: one bad provider must not stall the UI. */
+export async function fleetModels(fleet: Fleet, options: { timeoutMs?: number } = {}): Promise<Model[]> {
   const all: Model[] = [];
+  const timeoutMs = options.timeoutMs ?? 10_000;
   await Promise.all(
     [...fleet.providers.values()].map(async (p) => {
       try {
-        const models = await p.models();
+        const models = await boundedModels(p, timeoutMs);
         // Apply capability overrides from profile config.
         const overrides = fleet.config.capabilityOverrides ?? {};
         for (const m of models) {
