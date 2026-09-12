@@ -717,3 +717,29 @@ h2, h3, .brand .name, .fsdialog h3, .panel h2 { font-family: var(--display); fon
 [data-theme="inverse"] .drow { background: #E8E2D2 !important; }
 [data-theme="inverse"] .tag { border-color: #B8B3A3; color: #5C5852; }
 [data-theme="inverse"] .noised { opacity: .05; }
+
+/* Signature — agentic.lancesmith.cc, hover types the domain in (site-faithful) */
+.signature {
+  display: inline-flex; align-items: baseline; gap: 0;
+  font-family: var(--display); font-weight: 520; font-size: 1.02rem;
+  text-decoration: none; color: var(--text);
+  transition: transform 250ms var(--ease-out-expo, var(--ease));
+}
+.signature-prefix { transition: color 250ms var(--ease-out-expo, var(--ease)); }
+.signature.is-hovered .signature-prefix { color: var(--accent); }
+.signature-dot {
+  color: var(--accent); margin: 0 0.05em 0 0; display: inline-block;
+  transition: transform 250ms var(--ease-out-expo, var(--ease));
+}
+.signature.is-hovered .signature-dot { transform: scale(1.4); }
+.signature-domain {
+  font-family: var(--display); font-style: italic; font-weight: 400;
+  color: var(--text-dim); letter-spacing: -0.02em; margin-left: 0.15em;
+}
+.signature-cursor {
+  display: inline-block; margin-left: 0.05em; color: var(--accent);
+  font-weight: 300; animation: cursor-blink 1s steps(2, end) infinite;
+}
+@keyframes cursor-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+.signature--compact.is-hovered { transform: scale(1.18); }
+.brand { gap: 10px; }

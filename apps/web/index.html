@@ -22,8 +22,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <div class="app" id="app" data-busy="0">
   <aside class="rail">
     <div class="brand">
-      <img src="/assets/agentic-mark.png" id="brandMark" alt="" width="34" height="34" />
-      <div><div class="name">lancesmith.cc</div><div class="sub">Harness</div></div>
+      <img src="/assets/agentic-mark.png" id="brandMark" alt="" width="30" height="30" />
+      <a class="signature signature--compact" id="brandSig" href="#" title="agentic.lancesmith.cc">
+        <span class="signature-prefix">agentic</span><span class="signature-dot">.</span><span class="signature-domain" id="sigDomain"></span><span class="signature-cursor">|</span>
+      </a>
     </div>
     <button class="newsession" id="newSession">New session</button>
     <div class="nav-section-label" style="padding:0 10px;">History</div>
@@ -699,6 +701,26 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       } catch (err) { feed.appendChild(el("div", "sys error", "status render failed: " + err.message)); throw err; }
     }).catch(function (e) { feed.appendChild(el("div", "sys error", "status fetch failed: " + e.message)); });
   }
+
+  // ---------- signature: hover types lancesmith.cc in (as on agentic.lancesmith.cc) ----------
+  (function () {
+    var sig = $("brandSig"), domain = $("sigDomain");
+    var full = "lancesmith.cc", n = 0, timer = null;
+    function render() { domain.textContent = full.slice(0, n); }
+    function typeIn() {
+      sig.classList.add("is-hovered");
+      clearInterval(timer);
+      timer = setInterval(function () { if (n < full.length) { n++; render(); } else clearInterval(timer); }, 45);
+    }
+    function typeOut() {
+      sig.classList.remove("is-hovered");
+      clearInterval(timer);
+      timer = setInterval(function () { if (n > 0) { n--; render(); } else clearInterval(timer); }, 22);
+    }
+    sig.addEventListener("mouseenter", typeIn);
+    sig.addEventListener("mouseleave", typeOut);
+    sig.addEventListener("click", function (e) { e.preventDefault(); });
+  })();
 
   // ---------- ambient: cursor glow ----------
   (function () {
