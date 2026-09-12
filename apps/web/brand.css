@@ -634,3 +634,86 @@ body, [data-theme="inverse"] body { background-image: none !important; }
 [data-theme="inverse"] .topbar, [data-theme="inverse"] .composer { border-color: #e3e6ee !important; }
 [data-theme="inverse"] .tag { border-color: #d8dce6; color: #555b78; }
 [data-theme="inverse"] .ghost { border-color: #d8dce6; }
+
+/* ============================================================
+   Agentic rebrand — fonts & colors from agentic.lancesmith.cc
+   default (dark): #0A0908 field, #FB923C brand
+   inverse (light): #d5d1c1 sand field, #C2410C brand
+   ============================================================ */
+@font-face { font-family: "Agentic Display"; src: url("/assets/fonts-a/font-display-300-900-normal-latin-caaebc34c5213078.woff2") format("woff2"); font-weight: 300 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Agentic Display"; src: url("/assets/fonts-a/font-display-300-900-italic-latin-3796a66788a8f2dc.woff2") format("woff2"); font-weight: 300 900; font-style: italic; font-display: swap; }
+@font-face { font-family: "Agentic Body"; src: url("/assets/fonts-a/font-body-400-normal-latin-e868cdf4720e9ea5.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Agentic Body"; src: url("/assets/fonts-a/font-body-500-normal-latin-e868cdf4720e9ea5.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Agentic Body"; src: url("/assets/fonts-a/font-body-600-normal-latin-e868cdf4720e9ea5.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Agentic Body"; src: url("/assets/fonts-a/font-body-700-normal-latin-e868cdf4720e9ea5.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+
+:root {
+  --font: "Agentic Body", Inter, system-ui, sans-serif;
+  --display: "Agentic Display", Fraunces, Georgia, serif;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1); /* ease-out-expo */
+  /* Agentic dark (default) */
+  --accent: #FB923C; --accent-soft: #FDBA74;
+  --bg: #0A0908; --surface: rgba(22, 20, 15, .86); --surface-2: rgba(31, 28, 23, .92);
+  --border: #2A2622; --border-strong: #4a443c;
+  --text: #F5F2EE; --text-dim: #9A9690; --text-faint: #6e6a63;
+  --ok: #4ADE80; --fail: #F87171; --amber: #FDBA74;
+  --brand-subtle: #422006; --on-brand: #0A0908;
+  --shadow: 0 18px 44px rgba(0,0,0,.55);
+  --glow: 0 0 0 1px rgba(251,146,60,.24), 0 8px 30px rgba(251,146,60,.12);
+}
+[data-theme="inverse"] {
+  /* Agentic light */
+  --accent: #C2410C; --accent-soft: #9A3412;
+  --bg: #d5d1c1; --surface: rgba(232, 226, 210, .88); --surface-2: rgba(220, 213, 194, .94);
+  --border: #B8B3A3; --border-strong: #8f8875;
+  --text: #1A1817; --text-dim: #5C5852; --text-faint: #73706B;
+  --ok: #16A34A; --fail: #DC2626; --amber: #9A3412;
+  --brand-subtle: #FEF3C7; --on-brand: #FFFFFF;
+  --shadow: 0 14px 34px rgba(26, 24, 23,.16);
+  --glow: 0 0 0 1px rgba(194,65,12,.22), 0 8px 26px rgba(194,65,12,.10);
+}
+
+/* typography: Fraunces display voice */
+h2, h3, .brand .name, .fsdialog h3, .panel h2 { font-family: var(--display); font-weight: 560; letter-spacing: -0.015em; }
+.brand .name { font-weight: 620; }
+.nav-section-label { font-family: var(--font); }
+.msg.user { font-family: var(--font); font-weight: 500; }
+
+/* buttons: Agentic brand solid */
+.btn-send, .newsession {
+  background: var(--accent) !important; color: var(--on-brand) !important;
+  border: 0; font-weight: 600;
+}
+.btn-send:hover, .newsession:hover { background: var(--accent-soft) !important; transform: translateY(-1px); box-shadow: var(--glow); filter: none; }
+.btn-send:disabled { filter: saturate(.4) opacity(.6); }
+[data-theme="inverse"] .btn-send, [data-theme="inverse"] .newsession { background: #C2410C !important; color: #fff !important; }
+[data-theme="inverse"] .btn-send:hover, [data-theme="inverse"] .newsession:hover { background: #9A3412 !important; }
+
+/* composer halo + stream accents in brand tones */
+.composer-inner::before { background: conic-gradient(from var(--ang), #FB923C, #FDBA74, #FEF3C7, #FB923C); }
+[data-theme="inverse"] .composer-inner::before { background: conic-gradient(from var(--ang), #C2410C, #9A3412, #FEF3C7, #C2410C); }
+.msg.user::before { color: var(--accent); }
+.msg.assistant { border-left-color: color-mix(in srgb, var(--accent) 35%, transparent) !important; }
+[data-theme="inverse"] .composer-bar { border-top-color: var(--border) !important; }
+.nav-item.active { color: var(--accent); }
+.pill.active { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
+[data-theme="inverse"] .pill.active { color: #fff; background: #C2410C; border-color: #9A3412; }
+.switch input:checked + .knob { background: var(--accent); }
+.thinking-line { color: var(--accent-soft); }
+.sys.route { color: var(--accent-soft); }
+.cap i { background: var(--accent); }
+
+/* warm sand surfaces for inverse (replace cool greys) */
+[data-theme="inverse"] body { background: #d5d1c1; }
+[data-theme="inverse"] .rail { background: #E8E2D2 !important; }
+[data-theme="inverse"] .topbar { background: #dcd7c6 !important; }
+[data-theme="inverse"] .card, [data-theme="inverse"] .msg.assistant { background: #E8E2D2 !important; border-color: #B8B3A3 !important; }
+[data-theme="inverse"] .composer-inner { background: #E8E2D2 !important; }
+[data-theme="inverse"] .chatrow:hover, [data-theme="inverse"] .chatrow.active,
+[data-theme="inverse"] .nav-item:hover, [data-theme="inverse"] .nav-item.active { background: #DCD5C2 !important; }
+[data-theme="inverse"] .modelpick, [data-theme="inverse"] .chip { background: #E8E2D2 !important; }
+[data-theme="inverse"] .fslist { background: #dcd7c6 !important; }
+[data-theme="inverse"] .fsrow:hover { background: #DCD5C2 !important; }
+[data-theme="inverse"] .drow { background: #E8E2D2 !important; }
+[data-theme="inverse"] .tag { border-color: #B8B3A3; color: #5C5852; }
+[data-theme="inverse"] .noised { opacity: .05; }

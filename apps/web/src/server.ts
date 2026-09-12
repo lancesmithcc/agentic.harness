@@ -95,7 +95,7 @@ function activeWorkspace(profile: string): string {
 
 const MIME: Record<string, string> = {
   ".png": "image/png", ".ttf": "font/ttf", ".json": "application/json",
-  ".css": "text/css", ".js": "text/javascript",
+  ".css": "text/css", ".woff2": "font/woff2", ".js": "text/javascript",
 };
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
