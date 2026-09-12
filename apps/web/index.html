@@ -250,6 +250,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     k.textContent = v ? (v.split("/")[1] || v) : "AUTO";
   }
   function buildModelMenu() {
+    try {
+    var seenIds = {};
     var m = $("modelMenu"); m.textContent = "";
     var mk = function (id, label, sub, dis) {
       var b = el("button", "mm-row" + (id === $("pin").value ? " sel" : ""));
@@ -264,7 +266,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       if (!seenIds[mm.id] && !mm.orchestratorOnly) m.appendChild(mk(mm.id, mm.id, "add key to enable", true));
     });
     m.appendChild(el("div", "nav-section-label", "fleet"));
-    var seenIds = {};
     var byId = {};
     (S.models || []).forEach(function (mod) { byId[mod.id] = mod; });
     Array.prototype.forEach.call($("pin").options, function (o) {
@@ -275,6 +276,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       m.appendChild(mk(o.value, o.value, (mod.caps && mod.caps.coding != null ? "c" + mod.caps.coding + " r" + mod.caps.reasoning : "") + (dis ? " · gated" : ""), dis));
     });
     m.hidden = false;
+    } catch (err) { console.error("menu", err); document.getElementById("modelMenu").hidden = false;
+      document.getElementById("modelMenu").appendChild(el("div", "sys error", "menu error: " + err.message)); }
   }
   $("modelPick").onclick = function (e) {
     e.stopPropagation();
