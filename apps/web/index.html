@@ -265,9 +265,14 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     });
     m.appendChild(el("div", "nav-section-label", "fleet"));
     var seenIds = {};
-    (S.models || []).forEach(function (mod) { seenIds[mod.id] = 1;
-      var dis = mod.orchestratorOnly && !S.settings.astraAvailable;
-      m.appendChild(mk(mod.id, mod.id, (mod.caps.coding != null ? "c" + mod.caps.coding + " r" + mod.caps.reasoning : "") + (dis ? " · gated" : ""), dis));
+    var byId = {};
+    (S.models || []).forEach(function (mod) { byId[mod.id] = mod; });
+    Array.prototype.forEach.call($("pin").options, function (o) {
+      if (!o.value || seenIds[o.value]) return;
+      seenIds[o.value] = 1;
+      var mod = byId[o.value] || {};
+      var dis = (mod.orchestratorOnly || o.disabled) && !S.settings.astraAvailable;
+      m.appendChild(mk(o.value, o.value, (mod.caps && mod.caps.coding != null ? "c" + mod.caps.coding + " r" + mod.caps.reasoning : "") + (dis ? " · gated" : ""), dis));
     });
     m.hidden = false;
   }
