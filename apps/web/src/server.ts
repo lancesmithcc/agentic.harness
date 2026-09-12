@@ -112,7 +112,7 @@ Bun.serve({
     if (url.pathname === "/" || url.pathname === "/index.html") {
       const page = join(here, "..", "index.html");
       return new Response(readFileSync(page, "utf8"), {
-        headers: { "content-type": "text/html; charset=utf-8" },
+        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
       });
     }
 
@@ -130,7 +130,7 @@ Bun.serve({
 
     if (url.pathname === "/brand.css") {
       return new Response(readFileSync(join(here, "..", "brand.css"), "utf8"), {
-        headers: { "content-type": "text/css" },
+        headers: { "content-type": "text/css", "cache-control": "no-store" },
       });
     }
 
