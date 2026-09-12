@@ -69,7 +69,7 @@ export class CodexProvider implements ModelProvider {
       )
       .join("\n\n");
 
-    const args = ["exec", "--json", "--sandbox", this.sandbox];
+    const args = ["exec", "--json", "--skip-git-repo-check", "--sandbox", this.sandbox];
     if (model && model !== "default") args.push("-m", model);
     args.push(prompt);
 
