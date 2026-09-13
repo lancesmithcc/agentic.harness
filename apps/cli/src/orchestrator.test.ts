@@ -54,6 +54,7 @@ describe("askRouted stream recovery", () => {
       [{ type: "tool-result", id: "r1", name: "write_file", content: "created output.txt" }, { type: "error", fatal: true, error: Object.assign(new Error("lost"), { code: "provider-error" as const }) }],
       [{ type: "done", text: "must not run" }],
     );
+    ctx.models[0]!.capabilities.tools = true;
     let persisted = false;
     const result = await askRouted(ctx, "write a file", [{ role: "user", content: "x" }], { pinnedModel: "one/a", onEvent(event) {
       if (event.type === "tool-result") persisted = (records.at(-1) as any)?.kind === "tool-result";
