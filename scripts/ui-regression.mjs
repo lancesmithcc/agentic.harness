@@ -24,6 +24,8 @@ const sessionEvents = {
     { v: 1, kind: "user-message", text: "The selected transcript" },
     { v: 1, kind: "assistant-delta", turnId: "partial", model: "fake/worker", text: "Recovered partial answer." },
     { v: 1, kind: "user-message", text: "Later user message" },
+    { v: 1, kind: "tool-call", turnId: "complete", id: "replay-tool", name: "workspace.inspect", arguments: { ignored: true } },
+    { v: 1, kind: "tool-result", turnId: "complete", id: "replay-tool", name: "workspace.inspect", content: "replayed output", isError: false },
     { v: 1, kind: "assistant-delta", turnId: "complete", model: "fake/worker", text: "superseded journal text" },
     { v: 1, kind: "assistant-text", turnId: "complete", model: "fake/worker", text: "New transcript wins." },
     { v: 1, kind: "self-change", before: "1111111", after: "2222222", beforeCommit: "1111111", afterCommit: "abcdef1234567890", branch: "self-evolve", repoUrl: "https://github.com/lancesmithcc/agentic.harness", files: [{ path: "apps/web/index.html", status: "M" }] },
@@ -68,6 +70,9 @@ const server = createServer(async (req, res) => {
     if (task === "sample") return setTimeout(() => {
       sse(res, { t: "route", session, decision: { selected: "fake/worker" } });
       sse(res, { t: "tool", id: "tool-1", name: "workspace.search" });
+      sse(res, { t: "tool-result", id: "tool-1", name: "workspace.search", isError: true, content: "<b>failed output</b> " + "x".repeat(500) });
+      sse(res, { t: "tool", id: "tool-2", name: "workspace.read" });
+      sse(res, { t: "tool-result", id: "tool-2", name: "workspace.read", isError: false, content: { text: "completed output" } });
       const sample = "## Markdown report\n\nA readable **result** with a [link](https://example.test).\n\n```js\nconst answer = 42;\n```\n";
       sse(res, { t: "delta", text: sample });
       sse(res, { t: "done", model: "fake/worker", text: sample });
@@ -144,6 +149,9 @@ try {
   expect((await page.locator("#view").innerText()).includes("Recovered partial answer."), "uncommitted journal deltas were not recovered");
   const replay = await page.locator("#view").innerText();
   expect(replay.indexOf("Recovered partial answer.") < replay.indexOf("Later user message"), "journal partial was appended after later history");
+  expect(await page.locator("#view .msg.assistant").count() === 2, "tool replay created a duplicate assistant bubble");
+  expect(await page.locator('#view .tool-row[data-tool-id="replay-tool"] .tool-state').innerText() === "Completed", "replayed tool result was not completed");
+  expect(await page.locator('#view .tool-row[data-tool-id="replay-tool"] details[open]').count() === 0, "replayed tool output should stay collapsed");
 
   await send("stop");
   await page.locator("#stop").click();
@@ -174,8 +182,12 @@ try {
   await page.waitForFunction(() => document.body.innerText.includes("Tool command failed"));
   expect((await page.locator(".answer").last().innerText()).includes("Markdown report"), "sample markdown was not rendered");
   expect(await page.locator(".md-code").count() === 1, "sample code block was not rendered");
-  expect(await page.locator(".tool-name").last().innerText() === "workspace.search", "tool activity was not rendered");
-  expect(await page.locator(".tool-state").last().innerText() === "Finished", "tool activity did not settle on final stream event");
+  const failedTool = page.locator('.tool-row[data-tool-id="tool-1"]');
+  expect(await failedTool.locator(".tool-state").innerText() === "Failed" && await failedTool.evaluate((node) => node.classList.contains("failed")), "failed tool result was overwritten by terminal completion");
+  expect(await failedTool.locator("details[open]").count() === 0, "live tool output should stay collapsed");
+  expect((await failedTool.locator(".tool-output-text").innerText()).length <= 360, "tool output was not capped");
+  expect((await failedTool.innerText()).includes("<b>failed output</b>") && await failedTool.locator("img").count() === 0, "tool output was not escaped as text");
+  expect(await page.locator('.tool-row[data-tool-id="tool-2"] .tool-state').innerText() === "Completed", "completed tool result was not retained");
   expect(await page.getByRole("button", { name: "Retry this request" }).count() === 1, "stream error did not expose retry");
   await mkdir(qaRoot, { recursive: true });
   await page.screenshot({ path: join(qaRoot, "ui-desktop.png"), fullPage: true });

@@ -121,7 +121,11 @@ try {
     }
   }});
   const end = result.events.findLast(e => e.type === 'turn/end');
-  if (end?.data.reason.kind !== 'completed') throw new Error(`DeepSeek Harness turn ended: ${end?.data.reason.kind ?? 'missing completion'}`);
+  const reason = end?.data.reason;
+  if (reason?.kind !== 'completed') {
+    const detail = reason?.kind === 'error' && reason.error?.message ? `: ${bounded(reason.error.message)}` : '';
+    throw new Error(`DeepSeek Harness turn ended: ${reason?.kind ?? 'missing completion'}${detail}`);
+  }
   // The official close handshake drains persistence before completion is sent.
   await close();
   emit({ type: 'done', text: result.finalResponse, finishReason: 'stop' });

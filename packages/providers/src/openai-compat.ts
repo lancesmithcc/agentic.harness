@@ -2,7 +2,7 @@
 import type {
   ModelProvider, Model, ModelCapabilities, ProviderHealth, HarnessRequest, HarnessEvent, UsageReport, HarnessError,
 } from "@harness/core";
-import { generateHarness } from "./harness-runtime.ts";
+import { generateHarness, type RuntimeRoute } from "./harness-runtime.ts";
 
 export interface OpenAICompatProviderOptions {
   apiKey?: string | null;
@@ -11,6 +11,8 @@ export interface OpenAICompatProviderOptions {
   defaultCapabilities?: ModelCapabilities;
   extraHeaders?: Record<string, string>;
   billing?: "api" | "coding-plan" | "local";
+  /** Explicit custom endpoints may serve models without authentication. */
+  allowUnauthenticated?: boolean;
 }
 
 export function harnessError(
@@ -120,20 +122,25 @@ export abstract class OpenAICompatProvider implements ModelProvider {
 
   async health(): Promise<ProviderHealth> {
     const checkedAt = new Date().toISOString();
-    if (!this.apiKey()) return { provider: this.id, ok: false, detail: `no API key (env ${this.opts.envVar ?? "unset"})`, checkedAt };
+    if (!this.apiKey() && !this.opts.allowUnauthenticated) return { provider: this.id, ok: false, detail: `no API key (env ${this.opts.envVar ?? "unset"})`, checkedAt };
     const models = await this.models();
     if (this.modelsError) return { provider: this.id, ok: false, detail: this.modelsError, checkedAt };
     return { provider: this.id, ok: true, detail: `${models.length} models via ${this.baseUrl}`, checkedAt };
+  }
+
+  protected harnessRoute(model: string): RuntimeRoute {
+    return {
+      provider: this.id, model, baseUrl: this.baseUrl,
+      apiKey: this.apiKey() ?? (this.opts.allowUnauthenticated ? "no-auth" : undefined),
+      headers: this.opts.extraHeaders, capabilities: this.capabilities(model), billing: this.opts.billing ?? "api",
+    };
   }
 
   async *generate(request: HarnessRequest): AsyncIterable<HarnessEvent> {
     const slash = request.model.indexOf("/");
     const model = slash >= 0 ? request.model.slice(slash + 1) : request.model;
     if (request.tools === true) {
-      yield* generateHarness(request, { profile: request.profile ?? "home", route: {
-        provider: this.id, model, baseUrl: this.baseUrl, apiKey: this.apiKey() ?? undefined,
-        headers: this.opts.extraHeaders, capabilities: this.capabilities(model), billing: this.opts.billing ?? "api",
-      } });
+      yield* generateHarness(request, { profile: request.profile ?? "home", route: this.harnessRoute(model) });
       return;
     }
     const started = Date.now();

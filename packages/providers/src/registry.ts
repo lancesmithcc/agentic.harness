@@ -77,7 +77,9 @@ export async function buildFleet(profileName?: string, cwd?: string): Promise<Fl
     if (!/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(id)) throw new Error("Invalid custom provider id");
     const apiKey = pc.apiKey ? resolveSecret(pc.apiKey) : null;
     const seed = Object.fromEntries((pc.models?.include ?? []).map(model => [model, { coding: 6, reasoning: 6 }]));
-    providers.set(id, new ConfiguredAPIProvider(id, pc.baseUrl.replace(/\/+$/, ""), { apiKey, billing: "api", capabilitiesSeed: seed }));
+    const provider = new ConfiguredAPIProvider(id, pc.baseUrl, { apiKey, billing: "api", allowUnauthenticated: !pc.apiKey, capabilitiesSeed: seed });
+    provider.configureEndpoint(pc.baseUrl);
+    providers.set(id, provider);
   }
 
   // Dedicated DeepSeek route retains its provider-native SDK adapter. Other

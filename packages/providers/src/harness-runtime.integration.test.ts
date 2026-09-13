@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import type { HarnessEvent } from "@harness/core";
 import { generateHarness } from "./harness-runtime.ts";
 
-const packagedNode = "/Applications/agentic.harness.app/Contents/Resources/node-runtime/bin/node";
+const packagedNode = "/Applications/agentic.harness.app/Contents/Resources/dsh-runtime/node/bin/node";
 const sourceNode = join(process.cwd(), "apps/desktop/.runtime/node/bin/node");
 const sourceBridge = join(process.cwd(), "packages/providers/runtime/deepseek-bridge.mjs");
 const node = existsSync(packagedNode) ? packagedNode : existsSync(sourceNode) ? sourceNode : undefined;
@@ -41,11 +41,14 @@ function finalText(text: string) {
 }
 async function withSdk<T>(run: () => Promise<T>): Promise<T> {
   if (!node) throw new Error("pinned Node runtime missing");
-  const oldNode = process.env.HARNESS_NODE_PATH, oldBridge = process.env.HARNESS_DSH_BRIDGE;
-  process.env.HARNESS_NODE_PATH = node; process.env.HARNESS_DSH_BRIDGE = sourceBridge;
+  const oldNode = process.env.HARNESS_NODE_PATH, oldBridge = process.env.HARNESS_DSH_BRIDGE, oldHome = process.env.HARNESS_HOME;
+  const home = mkdtempSync(join(tmpdir(), "agentic-runtime-home-"));
+  process.env.HARNESS_NODE_PATH = node; process.env.HARNESS_DSH_BRIDGE = sourceBridge; process.env.HARNESS_HOME = home;
   try { return await run(); } finally {
     if (oldNode === undefined) delete process.env.HARNESS_NODE_PATH; else process.env.HARNESS_NODE_PATH = oldNode;
     if (oldBridge === undefined) delete process.env.HARNESS_DSH_BRIDGE; else process.env.HARNESS_DSH_BRIDGE = oldBridge;
+    if (oldHome === undefined) delete process.env.HARNESS_HOME; else process.env.HARNESS_HOME = oldHome;
+    rmSync(home, { recursive: true, force: true });
   }
 }
 async function collect(request: Parameters<typeof generateHarness>[0], baseUrl: string) {
