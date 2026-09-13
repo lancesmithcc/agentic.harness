@@ -20,7 +20,7 @@ Three delegated coding workers covered persistence, adapters/runtime, and UX. Ki
 | Stop and concurrency | Work continued after cancellation; concurrent turns could mix | Abort propagation, provider cleanup, one active turn per profile/session, and active-session deletion guard |
 | Discovery latency | Fleet, models, and health were rebuilt per request | Immediate durable session acknowledgement; coalesced discovery cached for 15 seconds and invalidated by config/settings changes |
 | Workspace routing | Web provider config could come from server cwd rather than chosen workspace | Active workspace overrides now apply to discovery and routing |
-| Tool routing | Text-only model APIs advertised execution capability | Real agent adapters required for execution tasks; manual pins cannot pretend to execute files/tools; safe fallback filtering |
+| Tool routing | Text-only model APIs advertised execution capability | All API and local backends now execute file, shell, and MCP tasks through the shared official SDK; native Codex/Claude adapters retain their own tools; fallback stops after tool activity |
 | Context efficiency | Recent unrelated files and oversized history were included | Relevant bounded excerpts, secret/symlink exclusions, whole recent messages, explicit omission notice, oversized request validation |
 | UX | Startup profile hydration could discard valid saved history; late responses could overwrite new/profile-switched chats; streaming repeatedly parsed Markdown | Immutable turn identity, race guards, incremental text rendering, final Markdown pass, scroll position preservation, accessible modal navigation |
 | Mobile and theme | Wide controls clipped at 390px; light-theme text lost contrast | Compact mobile header and explicit navigation drawer; corrected inverse-theme contrast; reachable composer/settings/theme controls |
@@ -95,3 +95,37 @@ node scripts/verify-self-evolve.mjs
 ```
 
 The script uses disposable source and session directories, performs no remote push, and removes its fixture afterward. Application publication and checkpoint sync use the authorized GitHub repository; the checkpoint branch records history separately from the published `main` branch.
+
+## Shared tools follow-up — September 13, 2026
+
+File execution previously depended on choosing a native agent adapter. API and local adapters now use the same pinned DeepSeek SDK runtime for tool tasks, including manually selected models and configured OpenAI-compatible endpoints. Ordinary text requests retain direct token streaming. Tools follow the selected workspace and access mode; read-only denial and cancellation are tested through the real SDK. API keys reach the child process through its environment, never through command arguments or temporary configuration files.
+
+The bridge selects each provider's native protocol: OpenAI Responses, MiniMax Anthropic messages, or OpenAI-compatible completions. MiniMax's native [Anthropic-compatible API](https://platform.minimax.io/docs/api-reference/text-anthropic-api) resolved malformed thinking blocks observed through its completions route. Custom endpoint overrides remain supported.
+
+Local context limits come from the running server, not the model's theoretical training limit. The installed Gemma server has an 8,192-token context. The SDK also reserves 4,096 tokens, which initially left only one output token with the full prompt. For small contexts, optional orchestration/search schemas are omitted and the generated source map is available on demand. Core file, shell, image-read, MCP, sandbox, identity, and self-evolve instructions remain. Shell commands provide search when dedicated search schemas are omitted.
+
+Tool calls and results are durably saved and replayed as correlated activity. Failed tool status survives completion, replay does not duplicate assistant bubbles, and escaped result previews stay collapsed and bounded.
+
+Final checks: **99 tests passed**, 317 assertions across 20 files; TypeScript, strict browser regression, diff checks, and Bun dependency audit passed (zero reported vulnerabilities). SDK integration tests exercise real file/shell execution, read-only denial, cancellation, and useful output budgets under an 8K context. The desktop bundle rebuilt successfully and passed its ad-hoc signature verification.
+
+The compiled desktop server passed live file-read, shell-copy, read-back, MCP, identity, saved-event, and no-fallback checks in isolated homes:
+
+| Route | Model | Result | Observed complete workflow |
+|---|---|---|---|
+| DeepSeek API | deepseek-v4-flash | Pass, 4 tool calls | 42.956 s |
+| DeepSeek native SDK | deepseek-v4-flash | Pass, 4 tool calls | 6.688 s |
+| Z.ai | glm-5.3-flash | Pass, 4 tool calls | 25.707 s |
+| Kimi | k3 | Pass, 4 tool calls | 21.239 s |
+| MiniMax | MiniMax-M3 | Pass, 4 tool calls | 11.520 s |
+| Local | gemma-4-12b-it | Pass, 4 tool calls | 28.508 s |
+
+These are individual multi-step smoke runs, not latency guarantees. OpenAI and OpenRouter protocols are covered by deterministic checks, but live checks were skipped because their API keys were unavailable. Native Codex and Claude execution paths were unchanged and were not live-retested in this follow-up. Other selectable models still depend on their endpoint implementing the advertised tool protocol.
+
+After building the desktop bundle, reproduce with configured provider keys in the process environment:
+
+```sh
+node scripts/verify-model-tools.mjs
+HARNESS_QA_MODELS=local node scripts/verify-model-tools.mjs
+```
+
+The verifier uses temporary homes, workspaces, and an MCP fixture. It does not use real chat history or enable self-evolve. JSON reports stay local under `docs/qa`.

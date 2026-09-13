@@ -113,19 +113,21 @@ integration("official SDK runtime bridge", () => {
 integration("small-context runtime profile", () => {
   test("keeps execution tools while dropping optional orchestration schemas under 8k", async () => {
     const root = mkdtempSync(join(tmpdir(), "agentic-runtime-small-context-"));
-    let toolNames: string[] = [], estimatedTokens = Number.POSITIVE_INFINITY;
+    let toolNames: string[] = [], estimatedTokens = Number.POSITIVE_INFINITY, completionBudget = 0;
     const mock = await startMock(({ body, res }) => {
       const tools = Array.isArray(body.tools) ? body.tools as Array<{ function?: { name?: string } }> : [];
       toolNames = tools.map(tool => tool.function?.name).filter((name): name is string => Boolean(name));
       estimatedTokens = Math.ceil(Buffer.byteLength(JSON.stringify({ messages: body.messages, tools: body.tools }), "utf8") / 4);
+      completionBudget = Number(body.max_completion_tokens ?? body.max_tokens ?? 0);
       sse(res, finalText("compact profile complete"));
     });
     try {
-      const events = await withSdk(() => collect({ model: "mock/mock", cwd: root, access: "workspace", messages: [{ role: "user", content: "Read a file with the available tools." }], timeoutMs: 20_000 }, mock.baseUrl, 8192));
+      const events = await withSdk(() => collect({ model: "mock/mock", cwd: root, access: "workspace", messages: [{ role: "system", content: "x".repeat(6000) }, { role: "user", content: "Read a file with the available tools." }], timeoutMs: 20_000 }, mock.baseUrl, 8192));
       expect(events.at(-1)).toMatchObject({ type: "done", text: "compact profile complete" });
-      for (const name of ["bash", "read", "write", "edit", "glob", "grep"]) expect(toolNames).toContain(name);
-      for (const name of ["subagent", "subagent_fork", "workflow", "ralph", "web_search", "web_fetch"]) expect(toolNames).not.toContain(name);
+      for (const name of ["bash", "read", "write", "edit"]) expect(toolNames).toContain(name);
+      for (const name of ["glob", "grep", "job_list", "job_output", "job_kill", "exit_plan_mode", "subagent", "subagent_fork", "workflow", "ralph", "web_search", "web_fetch"]) expect(toolNames).not.toContain(name);
       expect(estimatedTokens).toBeLessThan(8192);
+      expect(completionBudget).toBeGreaterThan(1);
     } finally { await mock.close(); rmSync(root, { recursive: true, force: true }); }
   }, 30_000);
 });

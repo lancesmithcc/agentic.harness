@@ -72,7 +72,7 @@ const compactRuntimePatch = () => {
   // sandbox policy, MCP, filesystem, or shell tools.
   if (!Number.isFinite(request.route?.contextWindow) || request.route.contextWindow > 16_384) return '';
   const disabled = [
-    'skill-filesystem', 'tool-skill',
+    'skill-filesystem', 'tool-skill', 'tool-jobs', 'tool-fs-search', 'plan-mode',
     'command-goal', 'tool-goal',
     'tool-subagent-control', 'tool-subagent-list-agents', 'tool-subagent', 'tool-subagent-fork',
     'workflow-worker-thread', 'tool-workflow', 'tool-ralph', 'tool-todo', 'tool-web',

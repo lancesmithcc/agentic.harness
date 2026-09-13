@@ -15,6 +15,8 @@ export interface SelfState {
   access: "read-only" | "workspace" | "full";
   selfEvolve: boolean;
   client: "web" | "cli" | "desktop";
+  /** Small models read the source map on demand instead of receiving it every turn. */
+  contextWindow?: number;
 }
 
 /**
@@ -169,7 +171,7 @@ export function buildSelfKnowledge(state: SelfState): string {
 
   if (state.sourceRoot) {
     parts.push(
-      `## Your source code: ${state.sourceRoot}\nBun + TypeScript monorepo (workspaces apps/* and packages/*). Docs: README.md, apps/desktop/README.md. When asked how you work, read the relevant files rather than guessing (agents with file access can open them).\n${sourceMap(state.sourceRoot)}`,
+      `## Your source code: ${state.sourceRoot}\nBun + TypeScript monorepo (workspaces apps/* and packages/*). Docs: README.md, apps/desktop/README.md. When asked how you work, read the relevant files rather than guessing (agents with file access can open them).\n${state.contextWindow && state.contextWindow <= 16_384 ? "Read README.md for the source layout when needed." : sourceMap(state.sourceRoot)}`,
     );
   } else {
     parts.push(

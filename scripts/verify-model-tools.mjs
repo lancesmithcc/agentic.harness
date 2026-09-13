@@ -1,6 +1,7 @@
 /** Live tool checks against the built desktop server. Uses only disposable data. */
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +10,14 @@ const repo = fileURLToPath(new URL('../', import.meta.url));
 const app = join(repo, 'apps/desktop/src-tauri/target/release/bundle/macos/agentic.harness.app/Contents');
 const resources = join(app, 'Resources');
 const node = join(resources, 'dsh-runtime/node/bin/node');
+// Reserve an unused port before creating fixtures; refuse occupied explicit ports.
+const reservation = createServer();
+await new Promise((resolve, reject) => {
+  reservation.once('error', reject);
+  reservation.listen(Number(process.env.HARNESS_QA_PORT || 0), '127.0.0.1', resolve);
+});
+const port = reservation.address().port, base = `http://127.0.0.1:${port}`;
+await new Promise(resolve => reservation.close(resolve));
 const root = mkdtempSync(join(tmpdir(), 'agentic-model-tools-'));
 const home = join(root, 'data'), workspace = join(root, 'workspace'), bin = join(root, 'bin');
 for (const dir of [home, workspace, bin, join(home, 'profiles/home')]) mkdirSync(dir, { recursive: true });
@@ -47,7 +56,6 @@ createInterface({input:process.stdin}).on('line',line=>{
 const mcpServers = { fixture: { command: node, args: [fixtureMcp] } };
 writeFileSync(join(home, 'tools.json'), JSON.stringify({ tools: [], mcpServers, hiddenTools: [], hiddenMcp: [] }));
 writeFileSync(join(home, 'mcp.json'), JSON.stringify({ mcpServers }));
-const port = Number(process.env.HARNESS_QA_PORT || 31919), base = `http://127.0.0.1:${port}`;
 const child = spawn(join(app, 'MacOS/harness-server'), [], { cwd: workspace, env: {
   ...env, HARNESS_HOME: home, HARNESS_PROFILE: 'home', HARNESS_WEB_PORT: String(port), HARNESS_WEB_HOST: '127.0.0.1',
   HARNESS_WEB_ROOT: join(resources, 'web'), HARNESS_DSH_BRIDGE: join(resources, 'dsh-runtime/deepseek-bridge.mjs'), HARNESS_NODE_PATH: node,
@@ -98,8 +106,10 @@ try {
     results.push(result); console.log(JSON.stringify(result));
   }
   const report = { checkedAt: new Date().toISOString(), runtime: '0.1.5-rc.2', results, skipped: candidates.filter(([id]) => !routes.some(([route]) => route === id)).map(([id]) => id) };
-  writeFileSync(join(repo, 'docs/qa/model-tools.json'), JSON.stringify(report, null, 2) + '\n');
+  const reportName = requested ? `model-tools-${routes.map(([id]) => id).join('-') || 'none'}.json` : 'model-tools.json';
+  writeFileSync(join(repo, 'docs/qa', reportName), JSON.stringify(report, null, 2) + '\n');
   if (results.some(result => !result.passed)) process.exitCode = 1;
 } finally {
   child.kill('SIGTERM'); await closed;
+  rmSync(root, { recursive: true, force: true });
 }

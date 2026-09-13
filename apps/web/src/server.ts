@@ -326,7 +326,7 @@ function runRoutine(r: Routine, profile: string): string {
         const target = pool.find((m) => m.id === decision.selected);
         const request = { ...agentRequest(workspace, task), tools: useTools };
         const messages = target
-          ? compileContext(task, target, { cwd: request.cwd, history, skillInstructions: toolsHint(), self: selfKnowledge(profile, request.cwd) })
+          ? compileContext(task, target, { cwd: request.cwd, history, skillInstructions: toolsHint(), self: selfKnowledge(profile, request.cwd, target.capabilities.context) })
           : [{ role: "user" as const, content: task }];
         const before = snapshotFiles(workspace);
         const stepStart = Date.now();
@@ -414,7 +414,7 @@ function sourceRoot(): string | null {
   return DETECTED_SOURCE_ROOT;
 }
 
-function selfKnowledge(profile: string, workspace: string): string {
+function selfKnowledge(profile: string, workspace: string, contextWindow?: number): string {
   return buildSelfKnowledge({
     sourceRoot: sourceRoot(),
     profile,
@@ -422,6 +422,7 @@ function selfKnowledge(profile: string, workspace: string): string {
     access: agentRequest(workspace).access,
     selfEvolve: !!loadSettings().selfEvolve,
     client: HARNESS_CLIENT,
+    contextWindow,
   });
 }
 
@@ -1275,7 +1276,7 @@ Bun.serve({
             const request = { ...agentRequest(workspace, task), tools: useTools };
             if (turnAbort.signal.aborted) throw new Error("turn cancelled");
             const messages = target
-              ? compileContext(task + attached.forModel, target, { cwd: request.cwd, history, skillInstructions: toolsHint(), self: selfKnowledge(profile, request.cwd) })
+              ? compileContext(task + attached.forModel, target, { cwd: request.cwd, history, skillInstructions: toolsHint(), self: selfKnowledge(profile, request.cwd, target.capabilities.context) })
               : [{ role: "user" as const, content: task + attached.forModel }];
             if (turnAbort.signal.aborted) throw new Error("turn cancelled");
             turnStart = Date.now();

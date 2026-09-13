@@ -126,6 +126,7 @@ program
             access: "read-only",
             selfEvolve: false,
             client: "cli",
+            contextWindow: target.capabilities.context,
           }),
         })
       : [{ role: "user" as const, content: task }];

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const webRoot = join(import.meta.dir, "..");
 let home = "";
@@ -29,6 +29,7 @@ function events(text: string): any[] {
 beforeAll(async () => {
   home = mkdtempSync(join(tmpdir(), "agentic-tools-home-"));
   workspace = mkdtempSync(join(tmpdir(), "agentic-tools-workspace-"));
+  mkdirSync(join(home, "runtime-home"), { recursive: true });
   const bridge = join(home, "fixture-bridge.mjs");
   writeFileSync(bridge, `
     import { writeFileSync } from 'node:fs'; import { join } from 'node:path';
@@ -47,17 +48,27 @@ beforeAll(async () => {
   } });
   mkdirSync(join(home, "profiles", "home"), { recursive: true });
   writeFileSync(join(home, "profiles", "home", "profile.toml"), `[providers.fixture]\nenabled = true\nbase_url = "http://127.0.0.1:${modelServer.port}/v1"\napi_key = "env://FIXTURE_KEY"\n[providers.fixture.models]\ninclude = ["tool-model"]\ndiscovery = "manual"\n`);
-  writeFileSync(join(home, "settings.json"), JSON.stringify({ workspaces: { home: workspace }, agentAccess: "workspace", selfEvolve: true }));
+  // Never let the source-server fixture auto-detect or checkpoint this real
+  // checkout. Self-evolution has separate disposable-repository coverage.
+  writeFileSync(join(home, "settings.json"), JSON.stringify({ workspaces: { home: workspace }, agentAccess: "workspace", selfEvolve: false }));
   port = 20_000 + Math.floor(Math.random() * 8_000);
   child = Bun.spawn([process.execPath, "src/server.ts"], {
     cwd: webRoot, stdout: "ignore", stderr: "ignore",
-    env: { ...process.env, HARNESS_HOME: home, HARNESS_PROFILE: "home", HARNESS_WEB_HOST: "127.0.0.1", HARNESS_WEB_PORT: String(port), HARNESS_DSH_BRIDGE: bridge, FIXTURE_KEY: "fixture-key" },
+    // Do not inherit account credentials, profiles, or user settings into the
+    // fixture server. Its bridge is deliberately the only executable model.
+    env: {
+      HOME: join(home, "runtime-home"), TMPDIR: home, PATH: dirname(process.execPath),
+      LANG: process.env.LANG ?? "en_US.UTF-8",
+      HARNESS_HOME: home, HARNESS_PROFILE: "home", HARNESS_WEB_HOST: "127.0.0.1", HARNESS_WEB_PORT: String(port),
+      HARNESS_DSH_BRIDGE: bridge, HARNESS_NODE_PATH: process.execPath, FIXTURE_KEY: "fixture-key",
+    },
   });
   await ready(`http://127.0.0.1:${port}`);
 });
 
-afterAll(() => {
+afterAll(async () => {
   child?.kill(); modelServer?.stop();
+  await child?.exited;
   if (home) rmSync(home, { recursive: true, force: true });
   if (workspace) rmSync(workspace, { recursive: true, force: true });
 });
