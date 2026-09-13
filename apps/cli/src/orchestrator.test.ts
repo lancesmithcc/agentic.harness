@@ -42,6 +42,7 @@ describe("askRouted stream recovery", () => {
       [{ type: "tool-call", id: "t", name: "write", arguments: "{}" }, { type: "error", fatal: true, error: Object.assign(new Error("gone"), { code: "provider-error" as const }) }],
       [{ type: "done", text: "must not run" }],
     );
+    ctx.models[0]!.capabilities.tools = true;
     const result = await askRouted(ctx, "x", [{ role: "user", content: "x" }], { pinnedModel: "one/a" });
     expect(result.providerUsed).toBe("one");
     expect(result.text).toBe("");
