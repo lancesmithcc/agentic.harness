@@ -186,7 +186,7 @@ try {
   expect(await failedTool.locator(".tool-state").innerText() === "Failed" && await failedTool.evaluate((node) => node.classList.contains("failed")), "failed tool result was overwritten by terminal completion");
   expect(await failedTool.locator("details[open]").count() === 0, "live tool output should stay collapsed");
   expect((await failedTool.locator(".tool-output-text").innerText()).length <= 360, "tool output was not capped");
-  expect((await failedTool.innerText()).includes("<b>failed output</b>") && await failedTool.locator("img").count() === 0, "tool output was not escaped as text");
+  expect((await failedTool.locator(".tool-output-text").textContent()).includes("<b>failed output</b>") && await failedTool.locator("img").count() === 0, "tool output was not escaped as text");
   expect(await page.locator('.tool-row[data-tool-id="tool-2"] .tool-state').innerText() === "Completed", "completed tool result was not retained");
   expect(await page.getByRole("button", { name: "Retry this request" }).count() === 1, "stream error did not expose retry");
   await mkdir(qaRoot, { recursive: true });

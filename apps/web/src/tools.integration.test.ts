@@ -72,10 +72,6 @@ describe("web API shared tool runtime", () => {
     expect(response.status).toBe(200);
     const stream = events(await response.text());
     const accepted = stream.find(event => event.t === "accepted");
-    if (!stream.some(event => event.t === "tool")) {
-      const debug = await (await fetch(`${base}/api/session?profile=home&id=${accepted?.session}`)).json();
-      console.error("tool integration stream", JSON.stringify(stream), JSON.stringify(debug));
-    }
     expect(accepted?.session).toBeString();
     expect(stream).toContainEqual(expect.objectContaining({ t: "route", decision: expect.objectContaining({ selected: "fixture/tool-model" }) }));
     expect(stream).toContainEqual(expect.objectContaining({ t: "tool", id: "write-1", name: "write_file" }));

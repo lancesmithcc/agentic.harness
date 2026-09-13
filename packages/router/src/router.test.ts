@@ -133,6 +133,7 @@ describe("router.route", () => {
   });
   test("workspace inspection and tool requests require an executable runtime", () => {
     expect(taskRequiresTools("inspect the repository files and list folders")).toBe(true);
+    expect(taskRequiresTools("write output.txt")).toBe(true);
     expect(taskRequiresTools("use the MCP tool to search the workspace")).toBe(true);
     expect(taskRequiresTools("summarize this paragraph about tools")).toBe(false);
     const models = [mk("api/text", { reasoning: 10, tools: false }), mk("agent/runner", { reasoning: 6, tools: true })];
