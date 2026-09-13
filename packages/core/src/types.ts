@@ -173,9 +173,16 @@ export type TaskCategory =
   | "office-production"
   | "unknown";
 
+/** Per-chat execution scope. It is durable session state, never profile-global. */
+export interface SessionContext {
+  workspace?: string;
+  selfEvolve: boolean;
+}
+
 /** Session lifecycle events persisted as JSONL (PRD §29). */
 export type SessionEvent =
   | { v: 1; ts: string; kind: "session-start"; sessionId: string; profile: string; cwd: string }
+  | { v: 1; ts: string; kind: "session-context"; workspace?: string; selfEvolve?: boolean }
   | { v: 1; ts: string; kind: "user-message"; text: string }
   | {
       v: 1;

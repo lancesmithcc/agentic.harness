@@ -114,7 +114,9 @@ The planner/worker/reviewer pipeline routes each role independently and enforces
 
 ## Self-evolve
 
-With Self-evolve enabled, file-capable agents can rewrite any part of the harness source when asked: UI, runtime, routing, providers, desktop shell, build tools, and tests. Read-only access still prevents writes. Explicit self-evolve tasks use the source checkout as their working directory.
+Each chat remembers its own working folder. General questions and code requests refer to that folder; switching chats restores the folder selected for that conversation. A missing folder produces a clear error instead of redirecting work elsewhere.
+
+Enable **🧬** in the chat composer (tooltip: **self evolve**) to permit explicit changes to agentic.harness. The toggle belongs to that chat and starts off in new chats. When explicitly asked, file-capable agents can rewrite any part of the harness source: UI, runtime, routing, providers, desktop shell, build tools, and tests. Read-only access still prevents writes. Explicit self-evolve tasks temporarily use the source checkout; the chat keeps its selected project folder for subsequent ordinary work.
 
 The app records before/after commits on `self-evolve`, syncs them to GitHub, and exposes a file-aware rollback action. Rollback creates another commit and preserves newer local edits. `main` holds the published application; checkpoint sync never force-pushes or changes the checked-out branch or staging area. Offline checkpoints remain local with visible sync status and retry.
 

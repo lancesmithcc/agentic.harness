@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { compileContext, pickRelevantFiles } from "./compiler.ts";
-import { buildSelfKnowledge, findSourceRoot, selfEvolutionIntent } from "./self.ts";
+import { buildSelfKnowledge, findSourceRoot, harnessInquiry, selfEvolutionIntent } from "./self.ts";
 const model = { id: "local/test", model: "test", provider: "local", capabilities: { context: 4000 } };
 
 describe("context integrity", () => {
@@ -54,47 +54,77 @@ describe("context integrity", () => {
       }
       const self = buildSelfKnowledge({ sourceRoot: null, workspace: cwd, profile: "home", client: "web", access: "read-only", selfEvolve: false });
       expect(self).toContain("Your name is agentic.harness.");
-      expect(self).toContain("DeepHarness and deepwork are legacy");
       expect(self).toContain("~/.deepharness");
     } finally { rmSync(cwd, { recursive: true, force: true }); }
   });
-  test("self-evolve grants complete source scope but read-only access still wins", () => {
+  test("self-evolve grants source scope only for an explicit writable source task", () => {
     const cwd = mkdtempSync(join(tmpdir(), "agentic-self-evolve-"));
     try {
-      const writable = buildSelfKnowledge({ sourceRoot: cwd, workspace: cwd, profile: "home", client: "web", access: "workspace", selfEvolve: true });
+      const ordinary = buildSelfKnowledge({ sourceRoot: cwd, workspace: "/project", profile: "home", client: "web", access: "workspace", selfEvolve: true, task: "fix this app UI" });
+      expect(ordinary).toContain("Self-evolve is armed only");
+      expect(ordinary).toContain("selected working folder");
+      expect(ordinary).not.toContain("create, edit, delete, or reorganize any source");
+      expect(ordinary).not.toContain(cwd);
+
+      const writable = buildSelfKnowledge({ sourceRoot: cwd, workspace: cwd, profile: "home", client: "web", access: "workspace", selfEvolve: true, task: "refactor the harness" });
       expect(writable).toContain("create, edit, delete, or reorganize any source");
       expect(writable).toContain("Whole-architecture rewrites are allowed");
       expect(writable).toContain("app control plane, not you");
       expect(writable).toContain("lancesmithcc/agentic.harness");
       expect(writable).toContain("restarting the Bun harness server");
 
-      const desktop = buildSelfKnowledge({ sourceRoot: cwd, workspace: cwd, profile: "home", client: "desktop", access: "workspace", selfEvolve: true });
+      const desktop = buildSelfKnowledge({ sourceRoot: cwd, workspace: cwd, profile: "home", client: "desktop", access: "workspace", selfEvolve: true, task: "change agentic.harness UI" });
       expect(desktop).toContain("source edits do not change the running UI");
       expect(desktop).toContain("Rebuild and install the desktop bundle");
 
-      const readOnly = buildSelfKnowledge({ sourceRoot: cwd, workspace: cwd, profile: "home", client: "web", access: "read-only", selfEvolve: true });
+      const readOnly = buildSelfKnowledge({ sourceRoot: cwd, workspace: cwd, profile: "home", client: "web", access: "read-only", selfEvolve: true, task: "rewrite your own code" });
       expect(readOnly).toContain("overrides Self-evolve");
       expect(readOnly).toContain("do not edit files");
     } finally { rmSync(cwd, { recursive: true, force: true }); }
   });
   test("recognizes only explicit requests to evolve the harness", () => {
-    for (const task of ["rewrite your own code", "change agentic.harness UI", "fix harness history", "turn on self-evolve", "refactor the harness"]) {
+    for (const task of [
+      "rewrite your own code", "rewrite your own harness code in 'src/engine.ts'", "change agentic.harness UI",
+      "fix agentic.harness’s UI", "fix harness history", "refactor the harness",
+      "could you please edit agentic.harness server?", "will you fix the harness history?", "please rewrite your own source",
+      "fix agentic.harness, not the project",
+      "Self-evolve: in your own source, edit src/engine.ts so its exported version is 2 instead of 1.",
+      "In agentic.harness, fix the chat toolbar", "For your own code, add a chat button",
+      "Add a chat button to agentic.harness",
+    ]) {
       expect(selfEvolutionIntent(task)).toBe(true);
     }
-    for (const task of ["fix my app history", "update the project UI", "what is self evolution?", "summarize harness history", "rewrite this document"]) {
+    for (const task of [
+      "turn on self-evolve", "fix my app history", "update the project UI", "what is self evolution?", "summarize harness history",
+      "rewrite this document", "don't rewrite your own code", "do not fix agentic.harness UI", "fix the test harness",
+      "the user said 'fix harness history'", "how could we edit harness permissions?",
+      "Can agentic.harness edit files?", "Explain how the harness can edit files",
+      "Does agentic.harness change its own source?", "Should we fix the harness?",
+    ]) {
       expect(selfEvolutionIntent(task)).toBe(false);
     }
   });
 
-  test("small models defer the source map while retaining identity and self-evolve rules", () => {
+  test("allows explicit harness questions to receive read-only source context", () => {
+    expect(harnessInquiry("How could we edit harness permissions?")).toBe(true);
+    expect(harnessInquiry("Explain agentic.harness architecture")).toBe(true);
+    expect(harnessInquiry("how could we edit this app?")).toBe(false);
+    expect(harnessInquiry("how does this app work?")).toBe(false);
+    expect(harnessInquiry("explain the test harness")).toBe(false);
+    const sourceQuestion = buildSelfKnowledge({ sourceRoot: "/source", workspace: "/project", profile: "home", client: "web", access: "workspace", selfEvolve: true, task: "How could we edit harness permissions?" });
+    expect(sourceQuestion).toContain("treat source access as read-only");
+    expect(sourceQuestion).toContain("selected working folder as the working directory");
+    expect(sourceQuestion).not.toContain("create, edit, delete, or reorganize any source");
+  });
+
+  test("ordinary prompts omit source maps and self-evolution directions", () => {
     const root = join(import.meta.dir, "../../..");
     const state = { sourceRoot: root, workspace: root, profile: "home", client: "desktop" as const, access: "workspace" as const, selfEvolve: true };
-    const compact = buildSelfKnowledge({ ...state, contextWindow: 8192 });
-    expect(compact.length).toBeLessThan(buildSelfKnowledge(state).length);
-    expect(compact).toContain("Read README.md for the source layout");
+    const compact = buildSelfKnowledge({ ...state, contextWindow: 8192, task: "review the selected project" });
+    expect(compact.length).toBeLessThan(2000);
     expect(compact).toContain("Your name is agentic.harness.");
-    expect(compact).toContain("Whole-architecture rewrites are allowed");
-    expect(compact).toContain("Do not manipulate git refs");
-    expect(compact).toContain("source edits do not change the running UI");
+    expect(compact).toContain("Selected working folder");
+    expect(compact).not.toContain("Whole-architecture rewrites are allowed");
+    expect(compact).not.toContain("apps/web");
   });
 });

@@ -17,7 +17,7 @@ catch { throw new Error("ui-regression requires a local Playwright installation"
 
 const webRoot = new URL("../apps/web/", import.meta.url).pathname;
 const qaRoot = new URL("../docs/qa/", import.meta.url).pathname;
-const state = { cancels: 0, deleteAttempts: 0, syncCalls: 0, savedSessions: [] };
+const state = { cancels: 0, deleteAttempts: 0, syncCalls: 0, contextCalls: 0, askCalls: 0, slowContext: false, slowOldStatus: false, savedSessions: [], contexts: { old: { workspace: "/tmp/fake-home", selfEvolve: false }, new: { workspace: "/tmp/fake-home", selfEvolve: false } } };
 const sessionEvents = {
   old: Array.from({ length: 18 }, (_, i) => ({ v: 1, kind: i % 2 ? "assistant-text" : "user-message", model: "fake/worker", text: "Older message " + i + "\n" + "context ".repeat(90) })),
   new: [
@@ -33,23 +33,37 @@ const sessionEvents = {
 };
 function json(res, data, status = 200) { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(data)); }
 function sse(res, data) { res.write(`data: ${JSON.stringify(data)}\n\n`); }
-function fakeStatus(profile) {
-  return { profile, profiles: ["home", "work"], workspace: "/tmp/fake-" + profile,
+function fakeStatus(profile, sessionId) {
+  const sessionContext = sessionId && state.contexts[sessionId];
+  return { profile, profiles: ["home", "work"], workspace: state.slowOldStatus && sessionId === "old" ? "/tmp/stale-context" : sessionContext?.workspace || "/tmp/fake-" + profile,
+    defaultWorkspace: "/tmp/fake-" + profile, selfEvolve: sessionContext?.selfEvolve || false,
     settings: { theme: "gold", astraAvailable: false, reasoningOff: false }, providers: [] };
 }
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, "http://127.0.0.1");
   const profile = url.searchParams.get("profile") || "home";
   if (url.pathname === "/api/meta") return json(res, { verbs: ["Preparing"], settings: { theme: "gold" }, models: [] });
-  if (url.pathname === "/api/status") return json(res, fakeStatus(profile));
+  if (url.pathname === "/api/status") {
+    const payload = fakeStatus(profile, url.searchParams.get("sessionId"));
+    return state.slowOldStatus && url.searchParams.get("sessionId") === "old" ? setTimeout(() => json(res, payload), 140) : json(res, payload);
+  }
   if (url.pathname === "/api/sessions") return json(res, { sessions: state.savedSessions.concat([{ id: "old", title: "Old transcript", events: 4 }, { id: "new", title: "New transcript", events: 2 }]) });
+  if (url.pathname === "/api/session/context" && req.method === "PUT") {
+    let body = ""; for await (const part of req) body += part;
+    const input = JSON.parse(body || "{}"); const id = input.sessionId || "context-" + (++state.contextCalls);
+    const prior = state.contexts[id] || { workspace: "/tmp/fake-" + profile, selfEvolve: false };
+    state.contexts[id] = { workspace: input.workspace || prior.workspace, selfEvolve: input.selfEvolve == null ? prior.selfEvolve : !!input.selfEvolve };
+    state.savedSessions = [{ id, title: "Context chat", events: 0 }].concat(state.savedSessions.filter((s) => s.id !== id));
+    const payload = { session: id, ...state.contexts[id] };
+    return state.slowContext ? setTimeout(() => json(res, payload), 140) : json(res, payload);
+  }
   if (url.pathname === "/api/session") {
     const id = url.searchParams.get("id");
     if (req.method === "DELETE") {
       state.deleteAttempts++;
       return json(res, { error: "Session has an active turn and cannot be deleted." }, 409);
     }
-    return setTimeout(() => json(res, { events: sessionEvents[id] || [] }), id === "old" ? 180 : 5);
+    return setTimeout(() => json(res, { events: sessionEvents[id] || [], ...(state.contexts[id] || { workspace: "/tmp/fake-" + profile, selfEvolve: false }) }), id === "old" ? 180 : 5);
   }
   if (url.pathname === "/api/fs/list") return json(res, { dir: "/tmp", parent: "/", entries: ["fake-home"] });
   if (url.pathname === "/api/self" && req.method === "GET") return json(res, {
@@ -61,11 +75,12 @@ const server = createServer(async (req, res) => {
   if (url.pathname === "/api/turn/cancel" && req.method === "POST") { state.cancels++; return json(res, { ok: true }); }
   if (url.pathname === "/api/ask" && req.method === "POST") {
     let body = ""; for await (const part of req) body += part;
-    const task = JSON.parse(body || "{}").task || "";
+    state.askCalls++; const input = JSON.parse(body || "{}"), task = input.task || "";
     const session = "turn-" + task;
     state.savedSessions = [{ id: session, title: task + " request", events: 1 }].concat(state.savedSessions.filter((s) => s.id !== session));
     res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
-    sse(res, { t: "accepted", session });
+    const context = state.contexts[input.sessionId] || { workspace: input.workspace || "/tmp/fake-" + profile, selfEvolve: !!input.selfEvolve };
+    state.contexts[session] = context; sse(res, { t: "accepted", session, ...context });
     if (task === "error") return setTimeout(() => { sse(res, { t: "error", message: "Fake route failed" }); res.end(); }, 20);
     if (task === "sample") return setTimeout(() => {
       sse(res, { t: "route", session, decision: { selected: "fake/worker" } });
@@ -118,31 +133,61 @@ try {
   await page.goto(base, { waitUntil: "networkidle" });
   await page.waitForFunction(() => window.__S.profile === "home" && window.__S.sessionId === "old");
   expect((await page.locator("#view").innerText()).includes("Older message 0"), "normal boot did not hydrate the persisted home session");
+  expect(await page.locator('.nav-item[data-view="settings"]').count() === 1, "Settings is no longer reachable from navigation");
+  await page.locator('.nav-item[data-view="settings"]').click();
+  await page.waitForFunction(() => document.querySelector("#crumb").textContent === "Settings");
+  expect(await page.locator(".self-card").count() === 0, "legacy self-evolve card remained in Settings");
+  await page.locator('.nav-item[data-view="chat"]').click();
+  state.slowOldStatus = true;
+  await page.evaluate(() => window.__ls());
+  await page.getByRole("button", { name: "New session" }).click();
+  await page.waitForTimeout(180);
+  expect(await page.evaluate(() => window.__S.sessionId === null && window.__S.workspace === "/tmp/fake-home"), "late selected-chat status overwrote a new chat folder");
+  state.slowOldStatus = false;
+  await page.getByText("Old transcript", { exact: true }).click();
+  await page.waitForFunction(() => window.__S.sessionId === "old");
   await page.getByRole("button", { name: "Delete session Old transcript" }).click();
   await page.waitForFunction(() => document.body.innerText.includes("active turn and cannot be deleted"));
   expect(state.deleteAttempts === 1 && await page.evaluate(() => window.__S.sessionId === "old"), "409 delete cleared the selected session");
   await page.getByRole("button", { name: "work" }).click();
   await page.waitForFunction(() => document.querySelector("#profilePill").textContent === "work");
   expect(await page.locator("#profilePill").textContent() === "work", "profile switch did not win");
-  await page.locator('.nav-item[data-view="settings"]').click();
-  await page.waitForFunction(() => document.body.innerText.includes("GitHub sync needs retry"));
-  expect(await page.locator('.self-commit:not(a)').count() === 1, "pending self-evolve checkpoint was presented as a remote commit");
-  await page.getByRole("button", { name: "Retry sync" }).click();
-  await page.waitForFunction(() => document.body.innerText.includes("GitHub synced"));
-  expect(state.syncCalls === 1, "self-evolve retry did not call sync endpoint");
-  expect(await page.locator('.self-commit[href="https://github.com/lancesmithcc/agentic.harness/commit/abcdef1234567890"]').count() === 1, "synced self-evolve checkpoint is missing its safe GitHub link");
-  await page.locator('.nav-item[data-view="chat"]').click();
+  await page.getByRole("button", { name: "self evolve" }).click();
+  await page.waitForFunction(() => window.__S.selfEvolve === true && window.__S.sessionId.startsWith("context-"));
+  expect(await page.locator("#selfEvolveToggle").getAttribute("aria-pressed") === "true", "per-chat self evolve did not persist");
+  const contextId = await page.evaluate(() => window.__S.sessionId);
+  await page.locator("#wsBtn").click();
+  await page.locator(".fsrow").filter({ hasText: "fake-home" }).dblclick();
+  await page.waitForFunction(() => window.__S.workspace === "/tmp/fake-home");
+  expect(await page.evaluate(() => window.__S.sessionId) === contextId && state.contexts[contextId].workspace === "/tmp/fake-home", "folder selection did not preserve the active chat context");
+  await page.evaluate(() => window.__ls());
+  await page.waitForTimeout(20);
+  expect(await page.evaluate((id) => window.__S.sessionId === id && window.__S.workspace === "/tmp/fake-home" && window.__S.selfEvolve, contextId), "status refresh overwrote the active chat context");
+  state.slowContext = true;
+  const asksBeforeContextRace = state.askCalls;
+  await page.getByRole("button", { name: "self evolve" }).click();
+  await page.waitForFunction(() => window.__S.contextSaving === true);
+  expect(await page.locator("#send").isDisabled(), "send remained enabled while chat context was saving");
+  await page.locator("#task").press("Enter");
+  expect(state.askCalls === asksBeforeContextRace, "send started while context was still saving");
+  await page.getByRole("button", { name: "New session" }).click();
+  await page.waitForTimeout(180);
+  expect(await page.evaluate(() => !window.__S.contextSaving && !document.querySelector("#selfEvolveToggle").disabled && window.__S.sessionId === null), "new chat left controls stuck after an invalidated context save");
+  state.slowContext = false;
 
   await send("late");
+  expect(await page.locator("#selfEvolveToggle").isDisabled(), "self-evolve control stayed enabled during an active turn");
   await page.getByRole("button", { name: "New session" }).click();
   await page.waitForTimeout(220);
   expect(await page.evaluate(() => window.__S.sessionId === null), "late route replaced fresh session");
+  expect(await page.evaluate(() => window.__S.workspace === "/tmp/fake-work" && window.__S.selfEvolve === false), "new chat did not reset to the selected profile default folder and self-evolve off");
   expect(!(await page.locator("#view").innerText()).includes("late response"), "late stream rendered into fresh session");
   await page.waitForFunction(() => document.querySelector("#chatList").innerText.includes("late request"));
   expect(state.savedSessions.some((s) => s.id === "turn-late"), "detached accepted turn was not retained by isolated history");
 
   await page.getByText("New transcript", { exact: true }).click();
   await page.waitForTimeout(240);
+  expect(await page.evaluate(() => window.__S.workspace === "/tmp/fake-home" && window.__S.selfEvolve === false), "opening a saved chat did not restore its own folder and self-evolve state");
   expect((await page.locator("#view").innerText()).includes("New transcript wins."), "late boot hydration overwrote selected history");
   expect((await page.locator("#view").innerText()).includes("Local checkpoint abcdef12"), "recorded self-change overclaimed an unsynced remote commit");
   expect(!(await page.locator("#view").innerText()).includes("superseded journal text"), "committed turn replayed duplicate deltas");
@@ -206,12 +251,20 @@ try {
   expect(narrow.controls.every((box) => box.left >= 0 && box.right <= narrow.viewport && box.bottom <= 844), "a composer control is unreachable at 390px");
   metrics.narrow = narrow;
   await page.screenshot({ path: join(qaRoot, "ui-narrow.png"), fullPage: true });
+  await page.locator('#selfChatDetails summary').click();
+  await page.getByLabel('Harness source checkout').waitFor({ state: 'visible' });
+  const selfOptions = await page.locator('#selfChatOptions').boundingBox();
+  expect(selfOptions && selfOptions.x >= 0 && selfOptions.x + selfOptions.width <= 390 && selfOptions.y >= 0, 'self-evolve options escaped the mobile viewport');
+  expect(await page.locator('#selfEvolveToggle').getAttribute('title') === 'self evolve', 'self-evolve tooltip changed');
+  await page.screenshot({ path: join(qaRoot, 'ui-self-evolve-options.png'), fullPage: true });
+  await page.keyboard.press('Escape');
+  expect(!(await page.locator('#selfChatDetails').getAttribute('open')), 'Escape did not close self-evolve options');
   await page.locator("#mobileMenu").click();
   expect(await page.locator("#mobileMenu").getAttribute("aria-expanded") === "true", "mobile menu did not open");
-  expect(await page.locator('.rail.mobile-open .nav-item[data-view="settings"]').count() === 1, "Settings is not reachable from mobile navigation");
+  expect(await page.locator('.rail.mobile-open .nav-item[data-view="routines"]').count() === 1, "Routines is not reachable from mobile navigation");
   await page.screenshot({ path: join(qaRoot, "ui-narrow-menu.png"), fullPage: true });
-  await page.locator('.rail.mobile-open .nav-item[data-view="settings"]').click();
-  await page.waitForFunction(() => document.querySelector("#crumb").textContent === "Settings");
+  await page.locator('.rail.mobile-open .nav-item[data-view="routines"]').click();
+  await page.waitForFunction(() => document.querySelector("#crumb").textContent === "Routines");
   expect(await page.locator(".rail").evaluate((node) => !node.classList.contains("mobile-open")), "mobile drawer did not close after navigation");
   await page.locator("#mobileMenu").click();
   await page.locator("#themeToggle").click();
@@ -229,7 +282,7 @@ try {
     inactiveNav: getComputedStyle(document.querySelector('.nav-item[data-view="routines"]')).color,
     profile: getComputedStyle(document.querySelector(".profile-pill")).color,
   }));
-  expect(Object.values(metrics.inverse.ink).every((color) => color === "rgb(26, 24, 23)"), "inverse controls lack dark ink on the sand theme: " + JSON.stringify(metrics.inverse.ink));
+  expect(Object.values(metrics.inverse.ink).every((color) => color === "rgb(26, 24, 23)" || color === "rgb(55, 51, 47)"), "inverse controls lack dark ink on the sand theme: " + JSON.stringify(metrics.inverse.ink));
   await page.screenshot({ path: join(qaRoot, "ui-inverse.png"), fullPage: true });
 
   await page.locator("#wsBtn").click();

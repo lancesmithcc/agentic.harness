@@ -6,7 +6,7 @@ import { activeProfileName, ensureHarnessHome, loadConfig, HARNESS_HOME } from "
 import type { ProviderHealth, RoutingDecision } from "@harness/core";
 import { buildFleet, fleetModels } from "@harness/providers";
 import { findDelegationDoc, parseDelegation, route, taskRequiresTools } from "@harness/router";
-import { buildSelfKnowledge, compileContext, findSourceRoot, selfEvolutionIntent } from "@harness/context";
+import { buildSelfKnowledge, compileContext, findSourceRoot, harnessInquiry, selfEvolutionIntent } from "@harness/context";
 import { SessionStore, isSessionId, listSessions, sessionPath, usageSummary } from "@harness/sessions";
 import { askRouted, type OrchestratorContext } from "../../cli/src/orchestrator.ts";
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync, chmodSync, rmSync } from "node:fs";
@@ -75,7 +75,7 @@ async function discoverWebContext(profile: string, workspace: string): Promise<W
 }
 
 async function buildWebContext(profile: string, session = new SessionStore(profile)): Promise<OrchestratorContext & { delegationPath: string | null }> {
-  const workspace = activeWorkspace(profile);
+  const workspace = sessionWorkspace(profile, session);
   const discovered = await discoverWebContext(profile, workspace);
   const models = [...discovered.models];
   const s0 = loadSettings();
@@ -104,7 +104,7 @@ async function buildWebContext(profile: string, session = new SessionStore(profi
 interface HarnessSettings {
   astraAvailable: boolean;
   theme: "gold" | "inverse";
-  /** Working folder per profile (Claude Code-style project picker). */
+  /** Default working folder for new chats; existing chats own their context. */
   workspaces: Record<string, string>;
   /** User-registered models (Settings → Add a model). */
   customModels: Array<{ id: string; display?: string; role?: string; bestAt: string[]; avoidFor: string[]; coding?: number; reasoning?: number; context?: number; billing?: string }>;
@@ -116,7 +116,7 @@ interface HarnessSettings {
   reasoningOff: boolean;
   /** How much CLI agents may do in the working folder (Settings → Agent file access). */
   agentAccess: "read-only" | "workspace" | "full";
-  /** Let CLI agents edit the harness's own source (Settings → Self-evolve). */
+  /** Legacy setting retained on disk; self-evolve permission now belongs to each chat. */
   selfEvolve: boolean;
   /** DeepHarness source root; detected when the server runs from the repo, so the desktop app can find it. */
   selfSourceRoot: string;
@@ -151,6 +151,27 @@ function activeWorkspace(profile: string): string {
     } catch { /* fall through to home */ }
   }
   return homedir();
+}
+
+/** A remembered folder never silently falls back when moved or unmounted. */
+function sessionWorkspace(profile: string, session?: SessionStore): string {
+  return session?.context().workspace ?? activeWorkspace(profile);
+}
+function contextPayload(profile: string, session: SessionStore) {
+  return { session: session.sessionId, workspace: sessionWorkspace(profile, session), selfEvolve: session.context().selfEvolve };
+}
+function directoryPath(raw: string): string {
+  return raw === "~" ? homedir() : raw.startsWith("~/") ? join(homedir(), raw.slice(2)) : resolve(raw);
+}
+function isDirectory(path: string): boolean {
+  try { return statSync(path).isDirectory(); } catch { return false; }
+}
+function querySession(profile: string, url: URL): SessionStore | Response | undefined {
+  const id = url.searchParams.get("sessionId");
+  if (id === null) return undefined;
+  if (!isSessionId(id)) return json({ error: "bad session id" }, 400);
+  if (!existsSync(sessionPath(profile, id))) return json({ error: "session not found" }, 404);
+  return new SessionStore(profile, id);
 }
 
 // ---- Subscription logins (Settings → Accounts) ---------------------------
@@ -309,10 +330,11 @@ function runRoutine(r: Routine, profile: string): string {
     try {
       const ts = () => new Date().toISOString();
       session.append({ v: 1, ts: ts(), kind: "user-message", text: `Routine · ${r.name}` }); // session title
-      const ctx = await buildWebContext(profile);
+      const workspace = activeWorkspace(profile);
+      session.setContext({ workspace, selfEvolve: false });
+      const ctx = await buildWebContext(profile, session);
       const settings = loadSettings();
       const pool = routedModels(ctx.models, settings, false);
-      const workspace = activeWorkspace(profile);
       session.append({ v: 1, ts: ts(), kind: "artifact", path: workspace, note: "workspace" });
       if (r.model && !pool.some((m) => m.id === r.model)) throw new Error(`model ${r.model} is not available in profile ${profile}`);
       const pin = r.model || (settings.startModel && pool.some((m) => m.id === settings.startModel) ? settings.startModel : undefined);
@@ -326,11 +348,11 @@ function runRoutine(r: Routine, profile: string): string {
         const target = pool.find((m) => m.id === decision.selected);
         const request = { ...agentRequest(workspace, task), tools: useTools };
         const messages = target
-          ? compileContext(task, target, { cwd: request.cwd, history, skillInstructions: toolsHint(), self: selfKnowledge(profile, request.cwd, target.capabilities.context) })
+          ? compileContext(task, target, { cwd: request.cwd, history, skillInstructions: toolsHint(), self: selfKnowledge(profile, workspace, target.capabilities.context, task) })
           : [{ role: "user" as const, content: task }];
         const before = snapshotFiles(workspace);
         const stepStart = Date.now();
-        const selfWatch = beginSelfWatch(profile, session.sessionId);
+        const selfWatch = beginSelfWatch(profile, session.sessionId, task, false);
         const stepToolPaths: string[] = [];
         try {
           const result = await askRouted({ ...ctx, models: pool, session }, task, messages, {
@@ -380,29 +402,27 @@ const AGENT_TIMEOUT_MS = 20 * 60_000;
 const MAX_UPLOAD = 25 * 1024 * 1024;
 
 /** All adapters receive the working folder, selected access, and registered MCP servers. */
-function agentRequest(workspace: string, task = "") {
+function agentRequest(workspace: string, task = "", selfEvolve = false) {
   const s = loadSettings();
-  const access: "read-only" | "workspace" | "full" = s.agentAccess === "read-only" || s.agentAccess === "full" ? s.agentAccess : "workspace";
-  const root = s.selfEvolve && access !== "read-only" ? sourceRoot() : null;
+  let access: "read-only" | "workspace" | "full" = s.agentAccess === "read-only" || s.agentAccess === "full" ? s.agentAccess : "workspace";
+  const root = sourceRoot();
+  const editingSelf = selfEvolve && selfEvolutionIntent(task);
   // The official DeepSeek sandbox has one writable root. Explicit self-evolve
   // requests use the source as that root without raising the selected access.
-  const cwd = root && selfEvolutionIntent(task) ? root : workspace;
+  const cwd = root && editingSelf && access !== "read-only" ? root : workspace;
+  if (!editingSelf && (harnessInquiry(task) || (root && (cwd === root || cwd.startsWith(root + "/"))))) access = "read-only";
   return { cwd, access, mcpConfig: mcpConfigPath(), timeoutMs: AGENT_TIMEOUT_MS, addDirs: [] as string[] };
 }
 
-function needsSelfTools(task: string): boolean {
-  return loadSettings().selfEvolve && selfEvolutionIntent(task);
-}
-
 function needsTools(task: string, session: SessionStore): boolean {
-  return needsSelfTools(task) || taskRequiresTools(task) || session.all().some(event => event.kind === "tool-call" || event.kind === "tool-result");
+  return (session.context().selfEvolve && selfEvolutionIntent(task)) || harnessInquiry(task) || taskRequiresTools(task) || session.all().some(event => event.kind === "tool-call" || event.kind === "tool-result");
 }
 
 // ---- Self-knowledge + self-evolve -----------------------------------------
 const HARNESS_CLIENT: "web" | "desktop" = process.env.HARNESS_CLIENT === "desktop" ? "desktop" : "web";
 /** Source root when this server runs from the repo; remembered so the compiled desktop app can find it too. */
 const DETECTED_SOURCE_ROOT = findSourceRoot(here);
-if (DETECTED_SOURCE_ROOT && loadSettings().selfSourceRoot !== DETECTED_SOURCE_ROOT) {
+if (DETECTED_SOURCE_ROOT && !findSourceRoot(loadSettings().selfSourceRoot || "/")) {
   const s = loadSettings();
   s.selfSourceRoot = DETECTED_SOURCE_ROOT;
   saveSettings(s);
@@ -414,13 +434,14 @@ function sourceRoot(): string | null {
   return DETECTED_SOURCE_ROOT;
 }
 
-function selfKnowledge(profile: string, workspace: string, contextWindow?: number): string {
+function selfKnowledge(profile: string, workspace: string, contextWindow?: number, task = "", selfEvolve = false): string {
   return buildSelfKnowledge({
     sourceRoot: sourceRoot(),
     profile,
     workspace,
-    access: agentRequest(workspace).access,
-    selfEvolve: !!loadSettings().selfEvolve,
+    access: agentRequest(workspace, task, selfEvolve).access,
+    selfEvolve,
+    task,
     client: HARNESS_CLIENT,
     contextWindow,
   });
@@ -436,11 +457,11 @@ function git(root: string, args: string[], env: Record<string, string> = {}): { 
 }
 
 /** Save a durable source checkpoint before allowing any self-evolve turn. */
-function beginSelfWatch(profile: string, sessionId: string) {
+function beginSelfWatch(profile: string, sessionId: string, task: string, enabled: boolean) {
   const settings = loadSettings();
   const root = sourceRoot();
-  if (!settings.selfEvolve || settings.agentAccess === "read-only") return null;
-  if (!root) throw new Error("Self-evolve needs a source folder. Configure it in Settings.");
+  if (!enabled || !selfEvolutionIntent(task) || settings.agentAccess === "read-only") return null;
+  if (!root) throw new Error("Self-evolve needs a source folder. Configure it from the chat's self-evolve controls.");
   recoverAndSyncSelf();
   return beginEvolution(root, { profile, sessionId });
 }
@@ -839,17 +860,37 @@ Bun.serve({
     }
 
     if (url.pathname === "/api/workspace" && req.method === "GET") {
-      return json({ workspace: activeWorkspace(profile), profile });
+      const session = querySession(profile, url);
+      if (session instanceof Response) return session;
+      return json({ workspace: sessionWorkspace(profile, session), profile });
     }
     if (url.pathname === "/api/workspace" && req.method === "PUT") {
       const body = (await req.json().catch(() => ({}))) as { path?: string };
-      if (!body.path) return json({ error: "path required" }, 400);
-      const abs = body.path.startsWith("~/") ? join(homedir(), body.path.slice(2)) : resolve(body.path);
-      if (!existsSync(abs) || !statSync(abs).isDirectory()) return json({ error: "not a directory" }, 400);
+      if (typeof body.path !== "string" || !body.path.trim()) return json({ error: "path required" }, 400);
+      const abs = directoryPath(body.path);
+      if (!isDirectory(abs)) return json({ error: "not a directory" }, 400);
       const s = loadSettings();
       s.workspaces = { ...(s.workspaces ?? {}), [profile]: abs };
       saveSettings(s);
       return json({ workspace: abs, profile });
+    }
+
+    if (url.pathname === "/api/session/context" && req.method === "PUT") {
+      const body = (await req.json().catch(() => ({}))) as { sessionId?: unknown; workspace?: unknown; selfEvolve?: unknown };
+      if (body.sessionId !== undefined && (typeof body.sessionId !== "string" || !isSessionId(body.sessionId))) return json({ error: "bad session id" }, 400);
+      if (body.workspace !== undefined && (typeof body.workspace !== "string" || !body.workspace.trim())) return json({ error: "working folder required" }, 400);
+      if (body.selfEvolve !== undefined && typeof body.selfEvolve !== "boolean") return json({ error: "selfEvolve must be a boolean" }, 400);
+      const id = body.sessionId as string | undefined;
+      if (id && !existsSync(sessionPath(profile, id))) return json({ error: "session not found" }, 404);
+      if (id && activeTurns.has(`${profile}:${id}`)) return json({ error: "stop this turn before changing its chat context" }, 409);
+      const session = new SessionStore(profile, id);
+      const workspace = typeof body.workspace === "string" ? directoryPath(body.workspace) : sessionWorkspace(profile, session);
+      if (!isDirectory(workspace)) return json({ error: "This chat's working folder is unavailable. Choose an existing folder." }, 400);
+      try {
+        if (!session.all().length) session.append({ v: 1, ts: new Date().toISOString(), kind: "session-start", sessionId: session.sessionId, profile, cwd: workspace });
+        session.setContext({ workspace, selfEvolve: typeof body.selfEvolve === "boolean" ? body.selfEvolve : session.context().selfEvolve });
+        return json(contextPayload(profile, session));
+      } catch (error) { return json({ error: `could not save chat context: ${(error as Error).message}` }, 500); }
     }
 
     if (url.pathname === "/api/settings" && req.method === "PUT") {
@@ -915,11 +956,13 @@ Bun.serve({
         saveSettings(s);
       }
       if (url.pathname === "/api/self") {
+        const session = querySession(profile, url);
+        if (session instanceof Response) return session;
         const root = sourceRoot();
         return json({
           sourceRoot: root,
           git: !!root && existsSync(join(root, ".git")),
-          selfEvolve: !!loadSettings().selfEvolve,
+          selfEvolve: session?.context().selfEvolve ?? false,
           access: agentRequest(homedir()).access,
           client: HARNESS_CLIENT,
           evolution: root ? evolutionStatus(root) : null,
@@ -964,10 +1007,15 @@ Bun.serve({
     if (url.pathname === "/api/upload" && req.method === "POST") {
       if (!PROFILE_RE.test(profile)) return json({ error: "bad profile" }, 400);
       if (Number(req.headers.get("content-length") ?? 0) > MAX_UPLOAD) return json({ error: "files are capped at 25 MB" }, 413);
+      const session = querySession(profile, url);
+      if (session instanceof Response) return session;
+      const rawWorkspace = url.searchParams.get("workspace");
+      const workspace = session ? sessionWorkspace(profile, session) : rawWorkspace ? directoryPath(rawWorkspace) : activeWorkspace(profile);
+      if (!isDirectory(workspace)) return json({ error: "This chat's working folder is unavailable. Choose an existing folder." }, 400);
       const safe = basename(url.searchParams.get("name") ?? "file").replace(/[^\w.\- ]+/g, "_").replace(/^\.+/, "").trim().slice(0, 120) || "file";
       const bytes = new Uint8Array(await req.arrayBuffer());
       if (bytes.byteLength > MAX_UPLOAD) return json({ error: "files are capped at 25 MB" }, 413);
-      const dir = uploadsDir(activeWorkspace(profile));
+      const dir = uploadsDir(workspace);
       mkdirSync(dir, { recursive: true });
       const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
       let path = join(dir, `${stamp}-${safe}`);
@@ -1145,14 +1193,18 @@ Bun.serve({
     }
 
     if (url.pathname === "/api/status") {
-      const ctx = await buildWebContext(profile);
+      const session = querySession(profile, url);
+      if (session instanceof Response) return session;
+      const ctx = await buildWebContext(profile, session);
       const st = loadSettings();
       const hidden = new Set(st.hiddenModels ?? []);
       const customIds = new Set((st.customModels ?? []).map((m) => m.id));
       return json({
         settings: st,
         hiddenModels: st.hiddenModels ?? [],
-        workspace: activeWorkspace(profile),
+        workspace: sessionWorkspace(profile, session),
+        defaultWorkspace: activeWorkspace(profile),
+        selfEvolve: session?.context().selfEvolve ?? false,
         profile,
         profiles: ["home", "work"],
         providers: [...ctx.health.entries()].map(([id, h]) => ({
@@ -1197,8 +1249,8 @@ Bun.serve({
     }
 
     if (url.pathname === "/api/ask" && req.method === "POST") {
-      const body = (await req.json().catch(() => ({}))) as { task?: string; model?: string; sessionId?: string; escalate?: boolean; orchestrator?: boolean; noFallback?: boolean; tools?: boolean; attachments?: unknown };
-      const task = (body.task ?? "").trim();
+      const body = (await req.json().catch(() => ({}))) as { task?: string; model?: string; sessionId?: string; workspace?: unknown; selfEvolve?: unknown; escalate?: boolean; orchestrator?: boolean; noFallback?: boolean; tools?: boolean; attachments?: unknown };
+      const task = typeof body.task === "string" ? body.task.trim() : "";
       if (!task) return json({ error: "task required" }, 400);
       const requestedSessionId = body.sessionId === undefined ? undefined : String(body.sessionId);
       if (requestedSessionId !== undefined && !isSessionId(requestedSessionId)) return json({ error: "bad session id" }, 400);
@@ -1206,16 +1258,22 @@ Bun.serve({
       const session = new SessionStore(profile, requestedSessionId);
       const turnKey = `${profile}:${session.sessionId}`;
       if (activeTurns.has(turnKey)) return json({ error: "a turn is already running for this session" }, 409);
-      const attachments = validAttachments(body.attachments, activeWorkspace(profile));
+      if (!requestedSessionId && body.workspace !== undefined && (typeof body.workspace !== "string" || !body.workspace.trim())) return json({ error: "working folder required" }, 400);
+      if (!requestedSessionId && body.selfEvolve !== undefined && typeof body.selfEvolve !== "boolean") return json({ error: "selfEvolve must be a boolean" }, 400);
+      // Existing chat metadata wins over stale clients and profile defaults.
+      const workspace = !requestedSessionId && typeof body.workspace === "string" ? directoryPath(body.workspace) : sessionWorkspace(profile, session);
+      const selfEvolve = requestedSessionId ? session.context().selfEvolve : body.selfEvolve === true;
+      if (!isDirectory(workspace)) return json({ error: "This chat's working folder is unavailable. Choose an existing folder." }, 400);
+      const attachments = validAttachments(body.attachments, workspace);
       const attached = attachmentPrompt(attachments);
       const turnAbort = new AbortController();
       activeTurns.set(turnKey, turnAbort);
       const abortOnDisconnect = () => turnAbort.abort();
       req.signal.addEventListener("abort", abortOnDisconnect, { once: true });
       try {
-        if (session.all().length === 0) session.append({ v: 1, ts: new Date().toISOString(), kind: "session-start", sessionId: session.sessionId, profile, cwd: activeWorkspace(profile) });
+        if (session.all().length === 0) session.append({ v: 1, ts: new Date().toISOString(), kind: "session-start", sessionId: session.sessionId, profile, cwd: workspace });
+        session.setContext({ workspace, selfEvolve });
         session.append({ v: 1, ts: new Date().toISOString(), kind: "user-message", text: task + attached.forHistory });
-        session.append({ v: 1, ts: new Date().toISOString(), kind: "artifact", path: activeWorkspace(profile), note: "workspace" });
         for (const a of attachments) session.append({ v: 1, ts: new Date().toISOString(), kind: "artifact", path: a.path, note: "attachment" });
       } catch (err) {
         activeTurns.delete(turnKey);
@@ -1223,7 +1281,6 @@ Bun.serve({
         return json({ error: `could not persist session: ${(err as Error).message}` }, 500);
       }
       const history = session.messages().slice(0, -1);
-      const workspace = activeWorkspace(profile);
 
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
@@ -1233,7 +1290,7 @@ Bun.serve({
             if (!closed && !turnAbort.signal.aborted) controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
           };
           // The session is durable before fleet setup; expose it even if setup fails.
-          send({ t: "accepted", session: session.sessionId });
+          send({ t: "accepted", ...contextPayload(profile, session) });
           // CLI agents can work silently for minutes; comment pings keep Bun from dropping the stream.
           const ping = setInterval(() => {
             try { if (!turnAbort.signal.aborted) controller.enqueue(encoder.encode(": ping\n\n")); } catch { /* client went away */ }
@@ -1273,15 +1330,16 @@ Bun.serve({
             const useTools = typeof body.tools === "boolean" ? body.tools : attachments.length > 0 || needsTools(task, session);
             const decision0 = route({ task, models: pool, health: ctx.health, delegation: ctx.delegation, pinnedModel: effectivePin, escalate: body.escalate, requiresTools: useTools });
             const target = pool.find((m) => m.id === decision0.selected);
-            const request = { ...agentRequest(workspace, task), tools: useTools };
+            if (selfEvolutionIntent(task) && !selfEvolve) throw new Error("Turn on 🧬 self evolve in this chat before asking to edit agentic.harness.");
+            const request = { ...agentRequest(workspace, task, selfEvolve), tools: useTools };
             if (turnAbort.signal.aborted) throw new Error("turn cancelled");
             const messages = target
-              ? compileContext(task + attached.forModel, target, { cwd: request.cwd, history, skillInstructions: toolsHint(), self: selfKnowledge(profile, request.cwd, target.capabilities.context) })
+              ? compileContext(task + attached.forModel, target, { cwd: request.cwd, history, skillInstructions: toolsHint(), self: selfKnowledge(profile, workspace, target.capabilities.context, task, selfEvolve) })
               : [{ role: "user" as const, content: task + attached.forModel }];
             if (turnAbort.signal.aborted) throw new Error("turn cancelled");
             turnStart = Date.now();
             before = snapshotFiles(workspace);
-            selfWatch = beginSelfWatch(profile, session.sessionId);
+            selfWatch = beginSelfWatch(profile, session.sessionId, task, selfEvolve);
             prepared = true;
             send({ t: "route", decision: decision0, session: session.sessionId });
             const routedCtx: OrchestratorContext = { ...ctx, models: pool };
@@ -1351,7 +1409,7 @@ Bun.serve({
       if (!isSessionId(id)) return json({ error: "bad id" }, 400);
       if (!existsSync(sessionPath(profile, id))) return json({ error: "session not found" }, 404);
       const store = new SessionStore(profile, id);
-      return json({ events: store.all() });
+      return json({ events: store.all(), ...contextPayload(profile, store) });
     }
     if (url.pathname === "/api/usage") return json({ usage: await usageSummary(profile) });
 

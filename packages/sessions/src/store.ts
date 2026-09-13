@@ -5,10 +5,10 @@
  * Usage totals go to SQLite for `harness usage` rollups.
  */
 import { appendFileSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, writeSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { getHarnessHome } from "@harness/core";
-import type { SessionEvent, UsageReport } from "@harness/core";
+import type { SessionContext, SessionEvent, UsageReport } from "@harness/core";
 
 export class SessionStore {
   readonly sessionId: string;
@@ -41,6 +41,32 @@ export class SessionStore {
   all(): SessionEvent[] {
     this.refresh();
     return this.events;
+  }
+
+  /** Durable execution scope for this chat. Never consults profile settings. */
+  context(): SessionContext {
+    this.refresh();
+    return sessionContext(this.events);
+  }
+
+  /** Persist actual context changes, plus an explicit workspace choice over legacy metadata. */
+  setContext(patch: Partial<SessionContext>): SessionContext {
+    const current = this.context();
+    const hasExplicitWorkspace = this.events.some((event) => event.kind === "session-context" && event.workspace !== undefined);
+    const next: SessionContext = { ...current };
+    const event: Extract<SessionEvent, { kind: "session-context" }> = { v: 1, ts: new Date().toISOString(), kind: "session-context" };
+    if (patch.workspace !== undefined) {
+      if (typeof patch.workspace !== "string" || !patch.workspace.trim() || !isAbsolute(patch.workspace)) throw new Error("workspace must be a nonempty absolute path");
+      // A legacy cwd/artifact is only a fallback. Selecting that same path in
+      // the UI must still become authoritative before a later legacy artifact.
+      if (patch.workspace !== current.workspace || !hasExplicitWorkspace) { next.workspace = patch.workspace; event.workspace = patch.workspace; }
+    }
+    if (patch.selfEvolve !== undefined) {
+      if (typeof patch.selfEvolve !== "boolean") throw new Error("selfEvolve must be boolean");
+      if (patch.selfEvolve !== current.selfEvolve) { next.selfEvolve = patch.selfEvolve; event.selfEvolve = patch.selfEvolve; }
+    }
+    if (event.workspace !== undefined || event.selfEvolve !== undefined) this.append(event);
+    return next;
   }
 
   /** Rebuild the provider-neutral message list from the event log. */
@@ -97,7 +123,7 @@ export class SessionStore {
   }
 }
 
-export function listSessions(profile: string): Array<{ id: string; events: number; modified: string; title?: string }> {
+export function listSessions(profile: string): Array<{ id: string; events: number; modified: string; title?: string; workspace?: string; selfEvolve: boolean }> {
   assertProfile(profile);
   const dir = join(getHarnessHome(), "profiles", profile, "sessions");
   if (!existsSync(dir)) return [];
@@ -121,10 +147,31 @@ export function listSessions(profile: string): Array<{ id: string; events: numbe
         events: events.length,
         title,
         modified,
+        ...sessionContext(events),
       };
     })
     .sort((a, b) => b.modified.localeCompare(a.modified));
 }
+
+function sessionContext(events: SessionEvent[]): SessionContext {
+  let workspace: string | undefined;
+  let selfEvolve = false;
+  let explicitWorkspace = false;
+  for (const event of events) {
+    if (event.kind === "session-context") {
+      if (event.workspace !== undefined) { workspace = event.workspace; explicitWorkspace = true; }
+      if (event.selfEvolve !== undefined) selfEvolve = event.selfEvolve;
+      continue;
+    }
+    // Older sessions did not have context. Their final workspace artifact is
+    // the most specific historical scope, with session-start.cwd as fallback.
+    if (!explicitWorkspace && event.kind === "session-start" && isLegacyWorkspace(event.cwd)) workspace = event.cwd;
+    if (!explicitWorkspace && event.kind === "artifact" && event.note === "workspace" && isLegacyWorkspace(event.path)) workspace = event.path;
+  }
+  return workspace === undefined ? { selfEvolve } : { workspace, selfEvolve };
+}
+
+function isLegacyWorkspace(value: string): boolean { return Boolean(value.trim()) && isAbsolute(value); }
 
 /** File-safe IDs prevent a session parameter from escaping its profile folder. */
 export const SESSION_ID_RE = /^[a-z0-9][a-z0-9-]{0,127}$/i;
@@ -166,10 +213,11 @@ function readSessionEvents(filePath: string): SessionEvent[] {
 
 function isSessionEvent(value: unknown): value is SessionEvent {
   if (!value || typeof value !== "object") return false;
-  const event = value as { v?: unknown; ts?: unknown; kind?: unknown; turnId?: unknown; text?: unknown; content?: unknown; isError?: unknown; sessionId?: unknown; profile?: unknown; cwd?: unknown; provider?: unknown; model?: unknown; outcome?: unknown; error?: unknown; path?: unknown; from?: unknown; to?: unknown; cause?: unknown; reason?: unknown; id?: unknown; name?: unknown; arguments?: unknown; decision?: unknown; usage?: unknown; before?: unknown; after?: unknown; root?: unknown; files?: unknown; reverted?: unknown; skipped?: unknown };
+  const event = value as { v?: unknown; ts?: unknown; kind?: unknown; workspace?: unknown; selfEvolve?: unknown; turnId?: unknown; text?: unknown; content?: unknown; isError?: unknown; sessionId?: unknown; profile?: unknown; cwd?: unknown; provider?: unknown; model?: unknown; outcome?: unknown; error?: unknown; path?: unknown; from?: unknown; to?: unknown; cause?: unknown; reason?: unknown; id?: unknown; name?: unknown; arguments?: unknown; decision?: unknown; usage?: unknown; before?: unknown; after?: unknown; root?: unknown; files?: unknown; reverted?: unknown; skipped?: unknown };
   if (event.v !== 1 || !validTimestamp(event.ts)) return false;
   switch (event.kind) {
     case "session-start": return typeof event.sessionId === "string" && typeof event.profile === "string" && typeof event.cwd === "string";
+    case "session-context": return (event.workspace === undefined || typeof event.workspace === "string" && Boolean(event.workspace.trim()) && isAbsolute(event.workspace)) && (event.selfEvolve === undefined || typeof event.selfEvolve === "boolean") && (event.workspace !== undefined || event.selfEvolve !== undefined);
     case "user-message": return typeof event.text === "string";
     case "routing": return !!event.decision && typeof event.decision === "object";
     case "model-call": return typeof event.provider === "string" && typeof event.model === "string";
