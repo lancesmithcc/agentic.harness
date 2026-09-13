@@ -67,7 +67,8 @@ const DESCRIBE: Record<string, string> = {
   "packages/providers/runtime/deepseek-bridge.mjs": "Node-side DeepSeek SDK bridge: streamed events, local MCP-to-Cordis patch translation",
   "packages/providers/src/claude-code.ts": "Claude Code CLI adapter (subscription; permission modes, --add-dir, MCP config)",
   "packages/providers/src/codex.ts": "Codex CLI adapter (ChatGPT subscription; sandbox modes)",
-  "packages/providers/src/openai-compat.ts": "streaming client shared by OpenAI-compatible APIs (reasoning and <think> splitting)",
+  "packages/providers/src/openai-compat.ts": "API streaming plus shared SDK file/shell/MCP execution for every model backend",
+  "packages/providers/src/harness-runtime.ts": "provider-neutral transport into the official SDK agent loop, permissions and cancellation",
   "packages/providers/src/local.ts": "local models: llama.cpp, Ollama, LM Studio, MLX",
   "packages/router/src/router.ts": "task router: capability scoring, delegation rules, fallbacks",
   "packages/router/src/delegation.ts": "delegation.md parser",
@@ -161,6 +162,7 @@ export function buildSelfKnowledge(state: SelfState): string {
     `Identity rule: Introduce yourself as agentic.harness. DeepHarness and deepwork are legacy package/folder names, never your name. The underlying model is a replaceable provider; do not identify the application as that model.`,
     `Clients: the web UI on port 8790 (apps/web), the \`harness\` CLI (apps/cli) and the agentic.harness macOS app (apps/desktop). This session runs through ${CLIENT_NAMES[state.client]}.`,
     `Features: routed chat with fallback; file attachments (saved to <working folder>/.harness/uploads); files created in the working folder show up in chat as downloadable artifacts; routines with heartbeat schedules; soul.md standing instructions; a Tools & MCP registry; per-profile Claude and ChatGPT logins; agent file access levels; self-evolve.`,
+    `Tool access is shared across connected model backends. API and local models use the official SDK agent loop for action tasks; Claude Code and Codex use their native tools. Your selected file access still applies. Only claim execution when an actual tool result confirms it.`,
     `Right now: profile ${state.profile} · working folder ${state.workspace} · agent file access ${state.access} · self-evolve ${state.selfEvolve ? "on" : "off"}.`,
     `For compatibility, user data stays in ~/.deepharness (settings.json, soul.md, routines.json, tools.json, mcp.json, delegation.md, profiles/<name>/sessions). Never delete or rewrite it unless the user explicitly asks.`,
   ];

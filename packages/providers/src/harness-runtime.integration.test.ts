@@ -51,9 +51,9 @@ async function withSdk<T>(run: () => Promise<T>): Promise<T> {
     rmSync(home, { recursive: true, force: true });
   }
 }
-async function collect(request: Parameters<typeof generateHarness>[0], baseUrl: string) {
+async function collect(request: Parameters<typeof generateHarness>[0], baseUrl: string, context = 16000) {
   const events: HarnessEvent[] = [];
-  for await (const event of generateHarness(request, { profile: "integration", route: { provider: "mock", model: "mock", baseUrl, api: "openai-completions", billing: "local", capabilities: { context: 16000, tools: true, billing: "local" } } })) events.push(event);
+  for await (const event of generateHarness(request, { profile: "integration", route: { provider: "mock", model: "mock", baseUrl, api: "openai-completions", billing: "local", capabilities: { context, tools: true, billing: "local" } } })) events.push(event);
   return events;
 }
 
@@ -106,6 +106,26 @@ integration("official SDK runtime bridge", () => {
       const events = await pending;
       expect(events.some(event => event.type === "done")).toBe(false);
       expect(events.at(-1)).toMatchObject({ type: "error", error: { code: "aborted" } });
+    } finally { await mock.close(); rmSync(root, { recursive: true, force: true }); }
+  }, 30_000);
+});
+
+integration("small-context runtime profile", () => {
+  test("keeps execution tools while dropping optional orchestration schemas under 8k", async () => {
+    const root = mkdtempSync(join(tmpdir(), "agentic-runtime-small-context-"));
+    let toolNames: string[] = [], estimatedTokens = Number.POSITIVE_INFINITY;
+    const mock = await startMock(({ body, res }) => {
+      const tools = Array.isArray(body.tools) ? body.tools as Array<{ function?: { name?: string } }> : [];
+      toolNames = tools.map(tool => tool.function?.name).filter((name): name is string => Boolean(name));
+      estimatedTokens = Math.ceil(Buffer.byteLength(JSON.stringify({ messages: body.messages, tools: body.tools }), "utf8") / 4);
+      sse(res, finalText("compact profile complete"));
+    });
+    try {
+      const events = await withSdk(() => collect({ model: "mock/mock", cwd: root, access: "workspace", messages: [{ role: "user", content: "Read a file with the available tools." }], timeoutMs: 20_000 }, mock.baseUrl, 8192));
+      expect(events.at(-1)).toMatchObject({ type: "done", text: "compact profile complete" });
+      for (const name of ["bash", "read", "write", "edit", "glob", "grep"]) expect(toolNames).toContain(name);
+      for (const name of ["subagent", "subagent_fork", "workflow", "ralph", "web_search", "web_fetch"]) expect(toolNames).not.toContain(name);
+      expect(estimatedTokens).toBeLessThan(8192);
     } finally { await mock.close(); rmSync(root, { recursive: true, force: true }); }
   }, 30_000);
 });

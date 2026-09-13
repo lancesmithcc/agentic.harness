@@ -38,6 +38,6 @@ compiled server finds them through `HARNESS_WEB_ROOT`.
 
 DeepSeek's SDK bridge and Node binary are bundled under `Contents/Resources/dsh-runtime`. The launcher supplies `HARNESS_DSH_BRIDGE` and `HARNESS_NODE_PATH`, so a bare Finder environment can still run the SDK. Provider credentials are resolved locally from the login-shell environment or the profile's Keychain references. No credentials are packaged.
 
-The SDK currently reports committed assistant steps, rather than token-by-token deltas. Live tool activity appears while it works. Each neutral conversation turn runs in a fresh native SDK session with bounded prior conversation; its native logs are retained under `~/.deepharness/profiles/<profile>/deepseek-runtime`.
+All API and local backends use this SDK for file, shell, and MCP tasks. The SDK reports committed assistant steps; live tool activity appears while it works. Plain text requests retain direct token streaming. Each tool turn runs in a fresh native SDK session with bounded prior conversation; native logs are retained under `~/.deepharness/profiles/<profile>/harness-runtime`.
 
 Validation evidence and known limits: [Gauntlet review](../../docs/GAUNTLET.md).

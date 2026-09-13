@@ -65,6 +65,20 @@ const routeConfigPatch = () => {
   // scalars keep configuration values data-only even if a route/header has YAML syntax.
   return `\n- id: llm-pi-ai\n  config:\n    providers:\n      ${JSON.stringify(route.provider)}:\n        apiKeyEnv: AGENTIC_PROVIDER_API_KEY\n        api: ${JSON.stringify(api)}\n        baseURL: ${JSON.stringify(baseURL)}\n        headers: ${JSON.stringify(headers)}\n        models:\n          - id: ${JSON.stringify(route.model)}\n            contextWindow: ${Number.isFinite(route.contextWindow) ? Math.max(1, Math.floor(route.contextWindow)) : 128000}\n            maxTokens: ${Number.isFinite(route.maxTokens) ? Math.max(1, Math.floor(route.maxTokens)) : 8192}`;
 };
+const compactRuntimePatch = () => {
+  // Small local models often expose an 8k context. Keep the execution and
+  // policy plane, but remove optional orchestration/search tool schemas and
+  // their verbose prompt sections. This does not suppress runtime context,
+  // sandbox policy, MCP, filesystem, or shell tools.
+  if (!Number.isFinite(request.route?.contextWindow) || request.route.contextWindow > 16_384) return '';
+  const disabled = [
+    'skill-filesystem', 'tool-skill',
+    'command-goal', 'tool-goal',
+    'tool-subagent-control', 'tool-subagent-list-agents', 'tool-subagent', 'tool-subagent-fork',
+    'workflow-worker-thread', 'tool-workflow', 'tool-ralph', 'tool-todo', 'tool-web',
+  ];
+  return `\n${disabled.map(id => `- id: ${id}\n  disabled: true`).join('\n')}`;
+};
 const textContent = (value) => {
   if (typeof value === 'string') return value;
   if (Array.isArray(value)) return value.map(textContent).filter(Boolean).join('\n');
@@ -83,7 +97,7 @@ const toolNames = new Map();
 const close = () => harness ? (closing ??= harness.close()) : Promise.resolve();
 for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, () => { void close(); });
 try {
-  writeFileSync(patch, '- id: system-prompt\n  config:\n    personaPrefix: ' + JSON.stringify(`You are agentic.harness running ${request.route?.provider ?? 'an unknown provider'}/${request.route?.model ?? 'unknown model'}.\n${instructions}`) + '\n    personaSuffix: "Your working directory is {{cwd}}."\n' + routeConfigPatch() + mcpPatch(), { mode: 0o600 });
+  writeFileSync(patch, '- id: system-prompt\n  config:\n    personaPrefix: ' + JSON.stringify(`You are agentic.harness running ${request.route?.provider ?? 'an unknown provider'}/${request.route?.model ?? 'unknown model'}.\n${instructions}`) + '\n    personaSuffix: "Your working directory is {{cwd}}."\n' + routeConfigPatch() + compactRuntimePatch() + mcpPatch(), { mode: 0o600 });
   mkdirSync(request.home, { recursive: true, mode: 0o700 });
   harness = new DeepSeekHarness({
     profile: 'sdk', dshHome: request.home, cwd: request.cwd,
