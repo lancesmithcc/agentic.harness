@@ -48,6 +48,7 @@ export const LocalEndpointSchema = z.object({
   name: z.string(),
   url: z.string().url(),
   model: z.string().optional(),
+  contextWindow: z.number().int().min(1024).optional(),
   kind: z.enum(["ollama", "llamacpp", "lmstudio", "mlx", "openai-compat"]).optional(),
 });
 
