@@ -34,6 +34,10 @@ For the web interface, run `bun apps/web/src/server.ts` and open `http://127.0.0
 
 Subscription credentials stay owned by their official CLIs. API keys can come from the local process environment or macOS Keychain; committed config files should only hold `keychain://harness/<profile>/<provider>` references.
 
+Every API and local adapter supports file, shell, and registered MCP tools through the shared official SDK agent loop. Action tasks and follow-ups after tool work automatically use that runtime; plain text requests retain direct streaming. All routes honor the selected read-only, workspace, or full file access. Tool calls and results are saved with the chat and remain visible after reload. An API caller can explicitly select execution with `tools: true` on `/api/ask`.
+
+Local llama.cpp context limits are detected from the running server, rather than the model's theoretical maximum. Other local endpoints can set `contextWindow` in their config. Small contexts use a compact runtime that keeps file, shell and MCP tools while omitting optional orchestration tools. Source runs need the SDK's supported Node runtime; the desktop app bundles it.
+
 ## Profiles
 
 `home` and `work` keep separate credentials, providers, sessions, histories, delegation rules, and logs under `~/.deepharness/profiles/<name>/`.

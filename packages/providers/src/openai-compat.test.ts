@@ -83,7 +83,7 @@ describe("OpenAI-compatible streaming", () => {
     } finally { globalThis.fetch = original; }
   });
 
-  test("does not advertise unsupported tool execution", () => {
-    expect(new TestProvider().capabilities("x").tools).toBe(false);
+  test("advertises shared agent runtime tool execution", () => {
+    expect(new TestProvider().capabilities("x").tools).toBe(true);
   });
 });

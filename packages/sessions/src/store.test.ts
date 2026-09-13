@@ -110,4 +110,11 @@ describe("SessionStore", () => {
     store.append({ v: 1, ts: ts(), kind: "assistant-text", turnId: "turn-2", text: "streamed final", provider: "local", model: "test" });
     expect(store.messages()).toEqual([{ role: "assistant", content: "streamed final", model: "test" }]);
   });
+
+  test("preserves durable tool results when a session is reopened", () => {
+    const store = new SessionStore("home", "tool-result-replay");
+    store.append({ v: 1, ts: ts(), kind: "tool-result", id: "call-1", name: "read_file", content: "fixture output", turnId: "turn-1", provider: "agent", model: "agent/test" });
+    const restored = new SessionStore("home", "tool-result-replay").all();
+    expect(restored).toContainEqual(expect.objectContaining({ kind: "tool-result", id: "call-1", content: "fixture output" }));
+  });
 });

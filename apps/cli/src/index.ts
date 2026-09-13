@@ -126,6 +126,7 @@ program
             access: "read-only",
             selfEvolve: false,
             client: "cli",
+            contextWindow: target.capabilities.context,
           }),
         })
       : [{ role: "user" as const, content: task }];
@@ -143,7 +144,7 @@ program
     let streamed = false;
     let result;
     try {
-      result = await askRouted(ctx, task, messages, { pinnedModel: pin, escalate: opts.escalate, request: { cwd: process.cwd(), access: "read-only", signal: abort.signal }, onEvent: (e) => {
+      result = await askRouted(ctx, task, messages, { pinnedModel: pin, escalate: opts.escalate, request: { cwd: process.cwd(), access: "read-only", profile, signal: abort.signal }, onEvent: (e) => {
         if (opts.json || e.type !== "text-delta") return;
         streamed = true;
         process.stdout.write(e.text);

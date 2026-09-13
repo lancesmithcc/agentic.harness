@@ -85,4 +85,16 @@ describe("context integrity", () => {
       expect(selfEvolutionIntent(task)).toBe(false);
     }
   });
+
+  test("small models defer the source map while retaining identity and self-evolve rules", () => {
+    const root = join(import.meta.dir, "../../..");
+    const state = { sourceRoot: root, workspace: root, profile: "home", client: "desktop" as const, access: "workspace" as const, selfEvolve: true };
+    const compact = buildSelfKnowledge({ ...state, contextWindow: 8192 });
+    expect(compact.length).toBeLessThan(buildSelfKnowledge(state).length);
+    expect(compact).toContain("Read README.md for the source layout");
+    expect(compact).toContain("Your name is agentic.harness.");
+    expect(compact).toContain("Whole-architecture rewrites are allowed");
+    expect(compact).toContain("Do not manipulate git refs");
+    expect(compact).toContain("source edits do not change the running UI");
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { route } from "./router.ts";
+import { route, taskRequiresTools } from "./router.ts";
 import { parseDelegation } from "./delegation.ts";
 import type { Model, ModelCapabilities } from "@harness/core";
 
@@ -130,6 +130,15 @@ describe("router.route", () => {
     const res = R({ task: "fix the failing test and run it", models, health: new Map() });
     expect(res.selected).toBe("agent/runner");
     expect(res.fallbacks).not.toContain("api/text");
+  });
+  test("workspace inspection and tool requests require an executable runtime", () => {
+    expect(taskRequiresTools("inspect the repository files and list folders")).toBe(true);
+    expect(taskRequiresTools("write output.txt")).toBe(true);
+    expect(taskRequiresTools("use the MCP tool to search the workspace")).toBe(true);
+    expect(taskRequiresTools("summarize this paragraph about tools")).toBe(false);
+    const models = [mk("api/text", { reasoning: 10, tools: false }), mk("agent/runner", { reasoning: 6, tools: true })];
+    const res = R({ task: "read the project files", models, health: new Map() });
+    expect(res.selected).toBe("agent/runner");
   });
 
   test("action tasks return no route when only text adapters are healthy", () => {

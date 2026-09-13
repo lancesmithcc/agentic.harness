@@ -762,6 +762,30 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     // The server deliberately omits arguments; names are rendered as text, never HTML.
     row.appendChild(el("code", "tool-name", String(evt.name || "tool")));
     activity.appendChild(row);
+    return row;
+  }
+  function toolOutput(content) {
+    var text;
+    if (typeof content === "string") text = content;
+    else if (Array.isArray(content)) text = content.map(function (part) { return typeof part === "string" ? part : (part && (part.text || part.content)) || ""; }).join("\n");
+    else { try { text = JSON.stringify(content); } catch { text = String(content || ""); } }
+    return String(text || "").replace(/\s+/g, " ").trim().slice(0, 360);
+  }
+  function toolResult(bubble, evt) {
+    var activity = bubble.querySelector(".tool-activity");
+    var row = null;
+    if (activity && evt.id) Array.prototype.some.call(activity.querySelectorAll(".tool-row"), function (candidate) {
+      if (candidate.dataset.toolId === String(evt.id)) { row = candidate; return true; }
+    });
+    if (!row) row = toolActivity(bubble, evt);
+    row.classList.remove("active"); row.classList.toggle("failed", !!evt.isError);
+    row.querySelector(".tool-state").textContent = evt.isError ? "Failed" : "Completed";
+    var text = toolOutput(evt.content);
+    if (text) {
+      var details = row.querySelector("details.tool-output");
+      if (!details) { details = el("details", "tool-output"); details.appendChild(el("summary", null, "Output")); row.appendChild(details); }
+      details.appendChild(el("span", "tool-output-text", text));
+    }
   }
   function finishToolActivity(bubble, state) {
     var activity = bubble.querySelector(".tool-activity");
@@ -795,6 +819,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       rb.textContent += evt.text; rb.scrollTop = rb.scrollHeight;
     }
     else if (evt.t === "tool") { toolActivity(bubble, evt); }
+    else if (evt.t === "tool-result") { toolResult(bubble, evt); }
     else if (evt.t === "artifact") { artifactsRow(bubble).appendChild(artifactNode(turn.sessionId, evt)); }
     else if (evt.t === "self-change") { bubble.appendChild(selfChangeCard(turn.sessionId, evt)); }
     else if (evt.t === "fallback") {
@@ -1120,7 +1145,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         body.appendChild(head("MCP servers", "Add MCP server", function () {
           if (!mcpSlot.firstChild) mcpSlot.appendChild(mcpForm(function () { mcpSlot.textContent = ""; }, draw));
         }));
-        body.appendChild(el("p", "tools-note", "Servers added here load into Claude and Codex in every profile. Agents call MCP tools only when Settings → Agent file access is Full autonomy."));
+        body.appendChild(el("p", "tools-note", "Servers added here are shared with connected model backends in every profile. MCP use remains subject to Agent file access and the selected backend's execution support."));
         body.appendChild(mcpSlot);
         (d.harnessMcp || []).forEach(function (m) {
           var c = card(), row = el("div", "row");
@@ -1153,7 +1178,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
               var imp = el("button", "ghost", "Use in harness"); imp.type = "button";
               imp.onclick = function () { act("POST", "/api/tools/mcp/import", { name: m.name, source: m.source }); };
               foot.appendChild(imp);
-            } else foot.appendChild(el("span", "tool-src", "codex config"));
+            } else foot.appendChild(el("span", "tool-src", "external config"));
             var hide = el("button", "rowbtn", "Hide"); hide.type = "button";
             hide.onclick = function () { act("POST", "/api/tools/hide", { kind: "mcp", name: m.name, hidden: true }); };
             foot.appendChild(hide); c.appendChild(foot);
@@ -1167,7 +1192,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         body.appendChild(head("CLI tools", "Add CLI tool", function () {
           if (!toolSlot.firstChild) toolSlot.appendChild(toolForm(function () { toolSlot.textContent = ""; }, draw));
         }));
-        body.appendChild(el("p", "tools-note", "Tools you add are described to every model; agents run them when shell access is allowed."));
+        body.appendChild(el("p", "tools-note", "Tools you add are shared with connected model backends when Agent file access permits command execution. Whether a tool runs depends on the selected backend's execution support."));
         body.appendChild(toolSlot);
         (d.manualTools || []).forEach(function (t) {
           var c = card(), row = el("div", "row");
@@ -1467,13 +1492,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   // ---------- agent file access ----------
   var ACCESS_MODES = [
     { id: "read-only", label: "Read-only", note: "Agents can read files but can't change anything." },
-    { id: "workspace", label: "Working folder", note: "Claude and Codex can create and edit files in the working folder. Shell commands and MCP tools stay blocked." },
-    { id: "full", label: "Full autonomy", note: "Agents run shell commands and MCP tools (browser automation, /gpt-image) without asking. Use only with a working folder you trust." }
+    { id: "workspace", label: "Working folder", note: "Connected model backends can create and edit files in the working folder. Shell commands and MCP tools stay blocked." },
+    { id: "full", label: "Full autonomy", note: "Connected model backends may use shell commands and MCP tools when the selected backend supports execution. Use only with a working folder you trust." }
   ];
   function accessSection() {
     var c = el("div", "card access");
     c.appendChild(el("h3", null, "Agent file access"));
-    c.appendChild(el("p", null, "What the CLI agents (Claude, Codex) may do in the working folder. Files they make show up in chat as downloads."));
+    c.appendChild(el("p", null, "What connected model backends may do in the working folder. Files a tool-enabled run creates appear in chat as downloads."));
     var seg = el("div", "seg"), note = el("p", "access-note");
     var cur = S.settings.agentAccess || "workspace";
     var paint = function () {
@@ -1712,7 +1737,18 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       S.sessionId = id; feed.textContent = ""; setView("chat");
       // Keep crash-journal deltas at their original chronological position.
       // A later final event upgrades that same bubble instead of duplicating it.
-      var pendingTurns = {}, finalizedTurns = {};
+      var pendingTurns = {}, finalizedTurns = {}, replayTurns = {}, lastAssistant = null;
+      function replayTurn(turnId, e) {
+        var existing = turnId && (pendingTurns[turnId] || replayTurns[turnId]);
+        if (existing) return existing;
+        if (!turnId) return lastAssistant;
+        var bubble = el("div", "msg assistant");
+        bubble.appendChild(el("div", "pill", e.model || e.provider || "tool activity"));
+        var answer = el("div", "answer"); bubble.appendChild(answer); feed.appendChild(bubble);
+        var turn = { bubble: bubble, answer: answer, text: "" };
+        pendingTurns[turnId] = turn; replayTurns[turnId] = turn; lastAssistant = turn;
+        return turn;
+      }
       (d.events || []).forEach(function (e) {
         if (e.kind === "assistant-delta") {
           if (!e.turnId || finalizedTurns[e.turnId]) return;
@@ -1724,6 +1760,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             bubble.appendChild(el("div", "turn-note", "Interrupted response recovered from the session journal."));
             feed.appendChild(bubble);
             pending = pendingTurns[e.turnId] = { bubble: bubble, answer: answer, text: "" };
+            replayTurns[e.turnId] = pending; lastAssistant = pending;
           }
           pending.text += e.text || "";
           renderMarkdown(pending.answer, pending.text);
@@ -1738,11 +1775,20 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             var note = done.bubble.querySelector(".turn-note"); if (note) note.remove();
             renderMarkdown(done.answer, e.text);
             delete pendingTurns[e.turnId];
+            replayTurns[e.turnId] = done; lastAssistant = done;
           } else {
             var b = el("div", "msg assistant"); b.appendChild(el("div", "pill", e.model));
             var finalAnswer = el("div", "answer"); renderMarkdown(finalAnswer, e.text);
             b.appendChild(finalAnswer); feed.appendChild(b);
+            if (e.turnId) replayTurns[e.turnId] = { bubble: b, answer: finalAnswer, text: e.text };
+            lastAssistant = e.turnId ? replayTurns[e.turnId] : { bubble: b, answer: finalAnswer, text: e.text };
           }
+        } else if (e.kind === "tool-call") {
+          var callTurn = replayTurn(e.turnId, e);
+          if (callTurn) toolActivity(callTurn.bubble, e);
+        } else if (e.kind === "tool-result") {
+          var resultTurn = replayTurn(e.turnId, e);
+          if (resultTurn) toolResult(resultTurn.bubble, e);
         } else if (e.kind === "artifact" && e.note === "attachment") {
           var users = feed.querySelectorAll(".msg.user"), lastUser = users[users.length - 1];
           if (lastUser) {

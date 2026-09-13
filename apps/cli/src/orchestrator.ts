@@ -13,7 +13,7 @@ import type {
   RoutingDecision,
   TurnOutcome,
 } from "@harness/core";
-import { route, resolveModelRef } from "@harness/router";
+import { route, resolveModelRef, taskRequiresTools } from "@harness/router";
 import type { DelegationDoc } from "@harness/router";
 import type { SessionStore } from "@harness/sessions";
 import { recordUsage } from "@harness/sessions";
@@ -30,7 +30,7 @@ export interface OrchestratorContext {
 
 export interface AskOptions {
   /** Per-call adapter options (working folder, access level, MCP config, timeout). */
-  request?: Pick<HarnessRequest, "cwd" | "access" | "mcpConfig" | "timeoutMs" | "addDirs" | "signal">;
+  request?: Pick<HarnessRequest, "cwd" | "access" | "mcpConfig" | "timeoutMs" | "addDirs" | "signal" | "tools" | "profile">;
   pinnedModel?: string;
   escalate?: boolean;
   /** Override action-task detection when a caller knows tool execution is required. */
@@ -70,6 +70,11 @@ export async function askRouted(
   messages: Parameters<ModelProvider["generate"]>[0]["messages"],
   opts: AskOptions = {},
 ): Promise<AskResult> {
+  // A follow-up after tool work needs the same executable runtime even when
+  // its wording is conversational (for example, "now run it again").
+  const priorToolWork = ctx.session.all().some((event) => event.kind === "tool-call" || event.kind === "tool-result");
+  const inferredTools = opts.requiresTools ?? (taskRequiresTools(task) || priorToolWork);
+  const useTools = opts.request?.tools ?? inferredTools;
   const decision = route({
     task,
     models: ctx.models,
@@ -77,7 +82,7 @@ export async function askRouted(
     delegation: ctx.delegation,
     pinnedModel: opts.pinnedModel,
     escalate: opts.escalate,
-    requiresTools: opts.requiresTools,
+    requiresTools: useTools,
   });
   ctx.session.append({ v: 1, ts: new Date().toISOString(), kind: "routing", decision });
   if (decision.selected === "none") throw new Error(decision.reason.slice(-2).join("; ") || "no available model can handle this task");
@@ -102,7 +107,7 @@ export async function askRouted(
     const usage: AskResult["usage"] = {};
 
     try {
-      for await (const evt of provider.generate({ ...opts.request, model: modelId, messages, taskLabel: task })) {
+      for await (const evt of provider.generate({ ...opts.request, tools: useTools, profile: opts.request?.profile ?? ctx.profile, cwd: opts.request?.cwd ?? process.cwd(), model: modelId, messages, taskLabel: task })) {
         switch (evt.type) {
           case "text-delta":
             // Persist before forwarding: an abrupt process exit can lose at
@@ -118,7 +123,13 @@ export async function askRouted(
             // A tool call is observable work. Re-running another model after
             // it can duplicate a write or lose required tool state.
             sawTool = true;
-            ctx.session.append({ v: 1, ts: new Date().toISOString(), kind: "tool-call", id: evt.id, name: evt.name, arguments: evt.arguments });
+            ctx.session.append({ v: 1, ts: new Date().toISOString(), kind: "tool-call", id: evt.id, name: evt.name, arguments: evt.arguments, turnId, provider: providerId, model: modelId });
+            break;
+          case "tool-result":
+            // Results can reveal an executed side effect even if the provider
+            // omitted its call event. Journal before notifying the UI.
+            sawTool = true;
+            ctx.session.append({ v: 1, ts: new Date().toISOString(), kind: "tool-result", id: evt.id, name: evt.name, content: evt.content.slice(0, 32_768), isError: evt.isError, turnId, provider: providerId, model: modelId });
             break;
           case "usage":
             // Agentic SDKs can report usage once per tool/model step. Keep the

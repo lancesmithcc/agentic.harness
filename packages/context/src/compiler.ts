@@ -147,7 +147,7 @@ export function compileContext(request: string, target: Model, opts: ContextOpti
 
   // Delegation-aware behavior hint based on target capability class.
   if (target.capabilities.local) {
-    systemParts.push("You are a local preprocessing model: be concise and factual; do not attempt complex engineering judgment.");
+    systemParts.push("You run locally. Be concise and factual, use available tools for requested actions, and verify results before claiming success.");
   }
 
   // Project grounding.

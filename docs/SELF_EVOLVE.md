@@ -10,7 +10,7 @@ Published release code belongs on GitHub `main`. Self-evolve checkpoints belong 
 2. Set Agent file access to **Workspace** or **Full**. **Read-only always wins**, even when Self-evolve is on.
 3. Ask for an explicit harness change, such as “fix harness history” or “change agentic.harness UI.” Ordinary project requests remain in the selected project workspace.
 
-With Workspace access, a self-evolve task uses the harness source root as its native agent workspace. This permits source edits without granting unrestricted filesystem access. A normal project and the harness source cannot both be writable through DeepSeek’s single native workspace boundary; use an appropriate tool-capable provider or run the self-evolve task from the source root.
+With Workspace access, a self-evolve task uses the harness source root as its agent workspace. This permits source edits without granting unrestricted filesystem access. All API and local model backends share the official SDK's single workspace boundary; a normal project and the harness source cannot both be writable in one restricted SDK turn. Run separate tasks for those workspaces, or explicitly select Full access when both are needed.
 
 ## Checkpoints, sync, and rollback
 

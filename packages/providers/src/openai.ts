@@ -6,6 +6,7 @@
  */
 import type { ModelCapabilities } from "@harness/core";
 import { OpenAICompatProvider } from "./openai-compat.ts";
+import type { RuntimeRoute } from "./harness-runtime.ts";
 
 const seed: Record<string, ModelCapabilities> = {
   "gpt-5.6-sol": { coding: 10, reasoning: 10, vision: true, tools: true, context: 400000, cost: 5, thinking: true },
@@ -22,6 +23,13 @@ const seed: Record<string, ModelCapabilities> = {
 export const ORCHESTRATOR_ONLY_MODELS = new Set(["codex/gpt-6-astra", "openai/gpt-6-astra"]);
 
 export class OpenAIProvider extends OpenAICompatProvider {
+  protected override harnessRoute(model: string): RuntimeRoute {
+    const route = super.harnessRoute(model);
+    // Official OpenAI supports the Responses tool loop. A user-selected
+    // OpenAI-compatible endpoint remains on Chat Completions by default.
+    return this.baseUrl === "https://api.openai.com/v1" ? { ...route, api: "openai-responses" } : route;
+  }
+
   constructor(apiKey?: string | null) {
     super("openai", "https://api.openai.com/v1", {
       apiKey,

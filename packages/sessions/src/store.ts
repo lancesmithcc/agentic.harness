@@ -166,7 +166,7 @@ function readSessionEvents(filePath: string): SessionEvent[] {
 
 function isSessionEvent(value: unknown): value is SessionEvent {
   if (!value || typeof value !== "object") return false;
-  const event = value as { v?: unknown; ts?: unknown; kind?: unknown; turnId?: unknown; text?: unknown; sessionId?: unknown; profile?: unknown; cwd?: unknown; provider?: unknown; model?: unknown; outcome?: unknown; error?: unknown; path?: unknown; from?: unknown; to?: unknown; cause?: unknown; reason?: unknown; id?: unknown; name?: unknown; arguments?: unknown; decision?: unknown; usage?: unknown; before?: unknown; after?: unknown; root?: unknown; files?: unknown; reverted?: unknown; skipped?: unknown };
+  const event = value as { v?: unknown; ts?: unknown; kind?: unknown; turnId?: unknown; text?: unknown; content?: unknown; isError?: unknown; sessionId?: unknown; profile?: unknown; cwd?: unknown; provider?: unknown; model?: unknown; outcome?: unknown; error?: unknown; path?: unknown; from?: unknown; to?: unknown; cause?: unknown; reason?: unknown; id?: unknown; name?: unknown; arguments?: unknown; decision?: unknown; usage?: unknown; before?: unknown; after?: unknown; root?: unknown; files?: unknown; reverted?: unknown; skipped?: unknown };
   if (event.v !== 1 || !validTimestamp(event.ts)) return false;
   switch (event.kind) {
     case "session-start": return typeof event.sessionId === "string" && typeof event.profile === "string" && typeof event.cwd === "string";
@@ -177,6 +177,7 @@ function isSessionEvent(value: unknown): value is SessionEvent {
     case "assistant-text": return typeof event.text === "string" && typeof event.provider === "string" && typeof event.model === "string" && (event.turnId === undefined || typeof event.turnId === "string");
     case "turn-outcome": return typeof event.provider === "string" && typeof event.model === "string" && (event.outcome === "interrupted" || event.outcome === "failed") && (event.error === undefined || typeof event.error === "string");
     case "tool-call": return typeof event.id === "string" && typeof event.name === "string" && typeof event.arguments === "string";
+    case "tool-result": return typeof event.id === "string" && typeof event.name === "string" && typeof event.content === "string" && typeof event.turnId === "string" && typeof event.provider === "string" && typeof event.model === "string" && (event.isError === undefined || typeof event.isError === "boolean");
     case "usage": return !!event.usage && typeof event.usage === "object" && typeof event.provider === "string" && typeof event.model === "string";
     case "fallback": return typeof event.from === "string" && typeof event.to === "string" && typeof event.cause === "string";
     case "artifact": return typeof event.path === "string";
