@@ -52,21 +52,46 @@ const mcpPatch = () => {
   }
   return rows.length ? `\n- insert:\n${rows.join('\n')}` : '';
 };
+const routeConfigPatch = () => {
+  const route = request.route;
+  if (!route || typeof route.provider !== 'string' || !route.provider || typeof route.model !== 'string' || !route.model) throw new Error('runtime route is required');
+  if (route.provider === 'deepseek-official') return '';
+  if (!route.baseUrl || typeof route.baseUrl !== 'string') throw new Error(`baseUrl is required for runtime route ${route.provider}`);
+  let baseURL; try { baseURL = new URL(route.baseUrl).toString(); } catch { throw new Error(`invalid baseUrl for runtime route ${route.provider}`); }
+  const headers = route.headers === undefined ? {} : stringMap(route.headers, 'provider headers');
+  const api = route.api ?? 'openai-completions';
+  if (!['openai-completions', 'openai-responses', 'anthropic-messages'].includes(api)) throw new Error(`unsupported runtime API: ${api}`);
+  // The mounted llm-pi-ai plugin accepts arbitrary provider route keys. JSON
+  // scalars keep configuration values data-only even if a route/header has YAML syntax.
+  return `\n- id: llm-pi-ai\n  config:\n    providers:\n      ${JSON.stringify(route.provider)}:\n        apiKeyEnv: AGENTIC_PROVIDER_API_KEY\n        api: ${JSON.stringify(api)}\n        baseURL: ${JSON.stringify(baseURL)}\n        headers: ${JSON.stringify(headers)}\n        models:\n          - id: ${JSON.stringify(route.model)}\n            contextWindow: ${Number.isFinite(route.contextWindow) ? Math.max(1, Math.floor(route.contextWindow)) : 128000}\n            maxTokens: ${Number.isFinite(route.maxTokens) ? Math.max(1, Math.floor(route.maxTokens)) : 8192}`;
+};
+const textContent = (value) => {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(textContent).filter(Boolean).join('\n');
+  if (value && typeof value === 'object') {
+    if (typeof value.text === 'string') return value.text;
+    if (typeof value.content === 'string') return value.content;
+    try { return JSON.stringify(value); } catch { return '[unserializable tool result]'; }
+  }
+  return value == null ? '' : String(value);
+};
+const bounded = value => textContent(value).slice(0, 16 * 1024);
 const instructions = request.messages.filter(m => m.role === 'system').map(m => m.content).join('\n\n');
 let harness;
 let closing;
+const toolNames = new Map();
 const close = () => harness ? (closing ??= harness.close()) : Promise.resolve();
 for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, () => { void close(); });
 try {
-  writeFileSync(patch, '- id: system-prompt\n  config:\n    personaPrefix: ' + JSON.stringify('You are agentic.harness.\n' + instructions) + '\n    personaSuffix: "Your working directory is {{cwd}}."\n' + mcpPatch(), { mode: 0o600 });
+  writeFileSync(patch, '- id: system-prompt\n  config:\n    personaPrefix: ' + JSON.stringify(`You are agentic.harness running ${request.route?.provider ?? 'an unknown provider'}/${request.route?.model ?? 'unknown model'}.\n${instructions}`) + '\n    personaSuffix: "Your working directory is {{cwd}}."\n' + routeConfigPatch() + mcpPatch(), { mode: 0o600 });
   mkdirSync(request.home, { recursive: true, mode: 0o700 });
   harness = new DeepSeekHarness({
     profile: 'sdk', dshHome: request.home, cwd: request.cwd,
     processCwd: request.cwd, patches: [patch],
-    provider: 'deepseek-official', model: request.model,
+    provider: request.route.provider, model: request.route.model,
     maxTokens: request.maxTokens ?? 8192,
     initializeTimeoutMs: 30_000,
-    env: { ...process.env, DSH_PERMISSION_MODE: request.access === 'full' ? 'danger-full-access' : request.access === 'workspace' ? 'workspace-write' : 'read-only', DSH_TELEMETRY_MODE: 'DISABLED' },
+    env: { ...process.env, ...(request.route.provider === 'deepseek-official' && process.env.AGENTIC_PROVIDER_API_KEY ? { DEEPSEEK_API_KEY: process.env.AGENTIC_PROVIDER_API_KEY } : {}), DSH_PERMISSION_MODE: request.access === 'full' ? 'danger-full-access' : request.access === 'workspace' ? 'workspace-write' : 'read-only', DSH_TELEMETRY_MODE: 'DISABLED' },
   });
   // A provider-neutral turn can follow any model. Replay its bounded transcript
   // in a fresh native session so switches never duplicate native history.
@@ -81,9 +106,18 @@ try {
         if (b.type === 'text' && b.text) emit({ type: 'text-delta', text: b.text });
         if (b.type === 'reasoning' && b.text) emit({ type: 'reasoning-delta', text: b.text });
       }
-      if (e.data.usage) emit({ type: 'usage', usage: { ...e.data.usage, billing: 'api' } });
+      if (e.data.usage) emit({ type: 'usage', usage: { ...e.data.usage, billing: request.route.billing ?? 'api' } });
     } else if (e.type === 'tool/call') {
-      emit({ type: 'tool-call', id: e.data.callId, name: e.data.name, arguments: e.data.arguments });
+      const id = String(e.data.callId); toolNames.set(id, String(e.data.name));
+      emit({ type: 'tool-call', id, name: e.data.name, arguments: e.data.arguments });
+    } else if (e.type === 'tool/result') {
+      const message = e.data.message ?? {}; const id = String(message.source?.callId ?? e.data.callId ?? '');
+      const result = Array.isArray(message.content) ? message.content.find(block => block?.type === 'tool-result') : undefined;
+      const content = bounded(result?.content ?? message.content);
+      // Shell's presentation block carries a nonzero exit in text even when
+      // the session envelope does not expose `isError` as a separate field.
+      const failed = result?.isError || message.isError || e.data.isError || e.data.error || /\[exit code: (?!0\])/.test(content);
+      emit({ type: 'tool-result', id, name: toolNames.get(id) ?? '', content, ...(failed ? { isError: true } : {}) });
     }
   }});
   const end = result.events.findLast(e => e.type === 'turn/end');

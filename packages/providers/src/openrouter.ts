@@ -11,8 +11,8 @@ export class OpenRouterProvider extends OpenAICompatProvider {
       billing: "api",
       defaultCapabilities,
       extraHeaders: {
-        "HTTP-Referer": "https://deepharness.local",
-        "X-Title": "DeepHarness",
+        "HTTP-Referer": "https://github.com/lancesmithcc/agentic.harness",
+        "X-Title": "agentic.harness",
       },
     });
   }

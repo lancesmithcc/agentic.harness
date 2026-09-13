@@ -42,6 +42,10 @@ export interface HarnessRequest {
   addDirs?: string[];
   /** Cancels this request. Providers must stop their transport and subprocesses. */
   signal?: AbortSignal;
+  /** Use the shared agent/tool runtime instead of a direct token stream. */
+  tools?: boolean;
+  /** Profile namespace for an adapter's isolated runtime state. */
+  profile?: string;
 }
 
 /** Streaming events emitted by every provider generate() call. */
@@ -54,6 +58,7 @@ export type HarnessEvent =
       name: string;
       arguments: string;
     }
+  | { type: "tool-result"; id: string; name: string; content: string; isError?: boolean }
   | { type: "usage"; usage: UsageReport }
   | { type: "model-call"; model: string; provider: string; latencyMs: number }
   | { type: "done"; finishReason?: string; text: string }
@@ -184,7 +189,8 @@ export type SessionEvent =
   | { v: 1; ts: string; kind: "assistant-text"; text: string; provider: string; model: string; turnId?: string }
   /** Records a non-successful terminal state so restored history is honest. */
   | { v: 1; ts: string; kind: "turn-outcome"; provider: string; model: string; outcome: Exclude<TurnOutcome, "completed">; error?: string }
-  | { v: 1; ts: string; kind: "tool-call"; id: string; name: string; arguments: string }
+  | { v: 1; ts: string; kind: "tool-call"; id: string; name: string; arguments: string; turnId?: string; provider?: string; model?: string }
+  | { v: 1; ts: string; kind: "tool-result"; id: string; name: string; content: string; isError?: boolean; turnId: string; provider: string; model: string }
   | { v: 1; ts: string; kind: "usage"; usage: UsageReport; provider: string; model: string }
   | {
       v: 1;

@@ -2,6 +2,7 @@
 import type {
   ModelProvider, Model, ModelCapabilities, ProviderHealth, HarnessRequest, HarnessEvent, UsageReport, HarnessError,
 } from "@harness/core";
+import { generateHarness } from "./harness-runtime.ts";
 
 export interface OpenAICompatProviderOptions {
   apiKey?: string | null;
@@ -54,7 +55,7 @@ function boundedSignal(request: HarnessRequest, idleMs = 30_000): {
 }
 
 export abstract class OpenAICompatProvider implements ModelProvider {
-  readonly kind = "api" as const;
+  readonly kind: ModelProvider["kind"] = "api";
   protected sendStreamOptions = true;
   lastUsage: UsageReport | null = null;
   private modelsCache: Model[] | null = null;
@@ -68,12 +69,19 @@ export abstract class OpenAICompatProvider implements ModelProvider {
   ) {}
 
   capabilities(model: string): ModelCapabilities {
-    // This adapter only streams text. It does not submit tool definitions or
-    // execute returned calls, so routing must never treat it as tool-capable.
-    return { ...(this.opts.defaultCapabilities ?? {}), ...(this.opts.capabilitiesSeed?.[model] ?? {}), tools: false };
+    // Execution is supplied by the same official agent runtime for every
+    // API backend. Ordinary text requests retain the lightweight SSE path.
+    return { ...(this.opts.defaultCapabilities ?? {}), ...(this.opts.capabilitiesSeed?.[model] ?? {}), tools: true };
   }
 
-  private apiKey(): string | null {
+  configureEndpoint(baseUrl: string): void {
+    const url = new URL(baseUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("Model endpoint must use HTTP or HTTPS");
+    this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.modelsCache = null;
+  }
+
+  protected apiKey(): string | null {
     if (this.opts.apiKey) return this.opts.apiKey;
     if (this.opts.envVar) {
       const v = process.env[this.opts.envVar];
@@ -121,6 +129,13 @@ export abstract class OpenAICompatProvider implements ModelProvider {
   async *generate(request: HarnessRequest): AsyncIterable<HarnessEvent> {
     const slash = request.model.indexOf("/");
     const model = slash >= 0 ? request.model.slice(slash + 1) : request.model;
+    if (request.tools === true) {
+      yield* generateHarness(request, { profile: request.profile ?? "home", route: {
+        provider: this.id, model, baseUrl: this.baseUrl, apiKey: this.apiKey() ?? undefined,
+        headers: this.opts.extraHeaders, capabilities: this.capabilities(model), billing: this.opts.billing ?? "api",
+      } });
+      return;
+    }
     const started = Date.now();
     const headers: Record<string, string> = { "content-type": "application/json" };
     const key = this.apiKey();
@@ -276,7 +291,7 @@ export abstract class OpenAICompatProvider implements ModelProvider {
         : finishReason === "content_filter"
           ? "provider stopped due to content filtering"
           : finishReason === "tool_calls"
-            ? "provider requested tool calls, which this text-only adapter cannot execute"
+            ? "provider requested tools in a text-only request; enable tool execution for this turn"
             : `provider stopped with finish_reason ${finishReason}`;
       yield { type: "error", error: harnessError("provider-error", detail, { provider: this.id, model }), fatal: true };
       return;

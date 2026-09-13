@@ -15,6 +15,8 @@ import { KimiProvider } from "./kimi.ts";
 import { MiniMaxProvider } from "./minimax.ts";
 import { OpenRouterProvider } from "./openrouter.ts";
 import { OpenAIProvider } from "./openai.ts";
+import { OpenAICompatProvider } from "./openai-compat.ts";
+class ConfiguredAPIProvider extends OpenAICompatProvider {}
 
 export interface Fleet {
   profile: string;
@@ -34,7 +36,7 @@ async function boundedModels(provider: ModelProvider, timeoutMs: number): Promis
   }
 }
 
-const API_PROVIDER_FACTS: Record<string, { envVar: string; make: (key: string | null) => ModelProvider }> = {
+const API_PROVIDER_FACTS: Record<string, { envVar: string; make: (key: string | null) => OpenAICompatProvider }> = {
   deepseek: { envVar: "DEEPSEEK_API_KEY", make: (k) => new DeepSeekProvider(k) },
   zai: { envVar: "ZAICODINGPLAN_KEY", make: (k) => new ZAIProvider(k) },
   kimi: { envVar: "KIMI_API_KEY", make: (k) => new KimiProvider(k) },
@@ -64,11 +66,22 @@ export async function buildFleet(profileName?: string, cwd?: string): Promise<Fl
       ? resolveSecret(pc.apiKey, facts.envVar)
       : (process.env[facts.envVar] ?? new SecretStore(profile).get(id) ?? null);
     if (!apiKey && !pc) continue; // not configured at all
-    providers.set(id, facts.make(apiKey));
+    const provider = facts.make(apiKey);
+    if (pc?.baseUrl) provider.configureEndpoint(pc.baseUrl);
+    providers.set(id, provider);
   }
 
-  // Official DeepSeek Harness SDK: agentic runtime with real file/shell/plugin
-  // execution. Keep it separate from the text-only OpenAI-compatible adapter.
+  // Explicitly configured OpenAI-compatible endpoints join the same fleet.
+  for (const [id, pc] of Object.entries(config.providers)) {
+    if (id in API_PROVIDER_FACTS || ["claude-code", "codex", "deepseek-harness", "local"].includes(id) || !pc.enabled || !pc.baseUrl) continue;
+    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(id)) throw new Error("Invalid custom provider id");
+    const apiKey = pc.apiKey ? resolveSecret(pc.apiKey) : null;
+    const seed = Object.fromEntries((pc.models?.include ?? []).map(model => [model, { coding: 6, reasoning: 6 }]));
+    providers.set(id, new ConfiguredAPIProvider(id, pc.baseUrl.replace(/\/+$/, ""), { apiKey, billing: "api", capabilitiesSeed: seed }));
+  }
+
+  // Dedicated DeepSeek route retains its provider-native SDK adapter. Other
+  // APIs use the same SDK execution loop through the pi-ai provider adapter.
   const deepseekHarnessConfig = config.providers["deepseek-harness"];
   if (deepseekHarnessConfig?.enabled !== false) {
     const { SecretStore } = await import("@harness/core");

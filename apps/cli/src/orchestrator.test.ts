@@ -15,7 +15,7 @@ function context(first: HarnessEvent[], second: HarnessEvent[]) {
     ctx: {
       providers: new Map([["one", provider("one", first)], ["two", provider("two", second)]]),
       models: ["one/a", "two/b"].map((id) => ({ id, model: id.split("/")[1]!, provider: id.split("/")[0]!, capabilities: {} })),
-      health: new Map(), delegation: null, profile: "test", session: { append(e: unknown) { records.push(e); } },
+      health: new Map(), delegation: null, profile: "test", session: { append(e: unknown) { records.push(e); }, all() { return records as any[]; } },
     } as unknown as OrchestratorContext,
   };
 }
@@ -46,6 +46,34 @@ describe("askRouted stream recovery", () => {
     expect(result.providerUsed).toBe("one");
     expect(result.text).toBe("");
     expect(result.outcome).toBe("failed");
+  });
+
+  test("journals bounded tool results before UI delivery and never falls back", async () => {
+    const { ctx, records } = context(
+      [{ type: "tool-result", id: "r1", name: "write_file", content: "created output.txt" }, { type: "error", fatal: true, error: Object.assign(new Error("lost"), { code: "provider-error" as const }) }],
+      [{ type: "done", text: "must not run" }],
+    );
+    let persisted = false;
+    const result = await askRouted(ctx, "write a file", [{ role: "user", content: "x" }], { pinnedModel: "one/a", onEvent(event) {
+      if (event.type === "tool-result") persisted = (records.at(-1) as any)?.kind === "tool-result";
+    } });
+    const entry = records.find((record: any) => record.kind === "tool-result") as any;
+    expect(persisted).toBe(true);
+    expect(entry).toMatchObject({ id: "r1", name: "write_file", provider: "one", model: "one/a" });
+    expect(result).toMatchObject({ providerUsed: "one", outcome: "failed", text: "" });
+  });
+
+  test("uses tool runtime for a file inspection request and tool-bearing follow-up", async () => {
+    const captured: any[] = [];
+    const p = provider("one", [{ type: "done", text: "ok" }]);
+    p.generate = async function* (request) { captured.push(request); yield { type: "done", text: "ok" }; };
+    const records: any[] = [{ v: 1, ts: new Date().toISOString(), kind: "tool-call", id: "prior", name: "read", arguments: "{}" }];
+    const ctx = { providers: new Map([["one", p]]), models: [{ id: "one/a", model: "a", provider: "one", capabilities: { tools: true } }], health: new Map(), delegation: null, profile: "work", session: { append(e: unknown) { records.push(e); }, all() { return records; } } } as unknown as OrchestratorContext;
+    await askRouted(ctx, "inspect the repository files", [{ role: "user", content: "x" }], { pinnedModel: "one/a", request: { access: "read-only" } });
+    await askRouted(ctx, "please continue", [{ role: "user", content: "x" }], { pinnedModel: "one/a", request: { access: "read-only" } });
+    expect(captured).toHaveLength(2);
+    expect(captured[0]).toMatchObject({ tools: true, profile: "work", access: "read-only", cwd: process.cwd() });
+    expect(captured[1].tools).toBe(true);
   });
 
   test("returns an interrupted partial result even with noFallback", async () => {

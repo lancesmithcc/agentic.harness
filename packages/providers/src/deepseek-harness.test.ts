@@ -55,3 +55,31 @@ describe("DeepSeek Harness boundary", () => {
     });
   });
 });
+
+describe("shared Harness runtime route", () => {
+  test("forwards public route settings but never serializes its API key", async () => {
+    const { generateHarness } = await import("./harness-runtime.ts");
+    await fakeBridge(`let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{const r=JSON.parse(input);console.log(JSON.stringify({type:'text-delta',text:JSON.stringify({route:r.route,hasKey:!!process.env.AGENTIC_PROVIDER_API_KEY,raw:input.includes('super-secret')})}));console.log(JSON.stringify({type:'done',text:'ok'}));});`, async () => {
+      const events: HarnessEvent[] = [];
+      for await (const event of generateHarness(request, { profile: "test", route: { provider: "local-mock", model: "mock-1", baseUrl: "http://127.0.0.1:9911/v1", apiKey: "super-secret", api: "openai-completions", headers: { "X-Route": "test" }, billing: "local" } })) events.push(event);
+      const text = events.find(event => event.type === "text-delta");
+      expect(text?.type).toBe("text-delta");
+      if (text?.type === "text-delta") {
+        const forwarded = JSON.parse(text.text);
+        expect(forwarded.route).toEqual({ provider: "local-mock", model: "mock-1", baseUrl: "http://127.0.0.1:9911/v1", headers: { "X-Route": "test" }, billing: "local", api: "openai-completions" });
+        expect(forwarded.hasKey).toBe(true); expect(forwarded.raw).toBe(false);
+      }
+      const call = events.find(event => event.type === "model-call");
+      expect(call).toMatchObject({ type: "model-call", provider: "local-mock", model: "mock-1" });
+    });
+  });
+  test("preserves bounded tool-result notifications", async () => {
+    const { generateHarness } = await import("./harness-runtime.ts");
+    await fakeBridge(`process.stdin.resume();process.stdin.on('end',()=>{console.log(JSON.stringify({type:'tool-call',id:'c1',name:'write',arguments:'{}'}));console.log(JSON.stringify({type:'tool-result',id:'c1',name:'write',content:'wrote file',isError:false}));console.log(JSON.stringify({type:'done',text:'ok'}));});`, async () => {
+      const events: HarnessEvent[] = [];
+      for await (const event of generateHarness(request, { profile: "test", route: { provider: "local-mock", model: "mock", baseUrl: "http://127.0.0.1:9911/v1", billing: "local" } })) events.push(event);
+      const result = events.find(event => event.type === "tool-result");
+      expect(result).toMatchObject({ type: "tool-result", id: "c1", name: "write", content: "wrote file" });
+    });
+  });
+});

@@ -76,9 +76,12 @@ function stem(w: string): string {
   return w;
 }
 
-/** Text-only chat adapters may draft code but cannot apply or verify it. */
-function taskRequiresTools(task: string): boolean {
-  return /\b(?:implement|fix|patch|refactor|modify|edit|update|run(?:ning)?\s+(?:tests?|build|command)|test(?:ing)?|build|deploy|commit)\b/i.test(task);
+/** Text-only chat adapters may draft code but cannot inspect or change a workspace. */
+export function taskRequiresTools(task: string): boolean {
+  const action = /\b(?:implement|fix|patch|refactor|modify|edit|update|run(?:ning)?\s+(?:tests?|build|command)|test(?:ing)?|build|deploy|commit)\b/i;
+  const inspect = /\b(?:read|inspect|list|search|find|grep|open)\b[\s\S]{0,80}\b(?:files?|folders?|director(?:y|ies)|repo(?:sitory)?|workspace|source|codebase|project)\b/i;
+  const runtime = /\b(?:use|call|run|execute|install|configure)\b[\s\S]{0,48}\b(?:mcp|tool(?:s)?|shell|terminal|command(?:s)?)\b|\b(?:self[ -]?evolve|own[ -]?source)\b/i;
+  return action.test(task) || inspect.test(task) || runtime.test(task);
 }
 
 /** Generic words that must never match a delegation phrase on their own. */

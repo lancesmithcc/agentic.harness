@@ -5,7 +5,7 @@
 import { activeProfileName, ensureHarnessHome, loadConfig, HARNESS_HOME } from "@harness/core";
 import type { ProviderHealth, RoutingDecision } from "@harness/core";
 import { buildFleet, fleetModels } from "@harness/providers";
-import { findDelegationDoc, parseDelegation, route } from "@harness/router";
+import { findDelegationDoc, parseDelegation, route, taskRequiresTools } from "@harness/router";
 import { buildSelfKnowledge, compileContext, findSourceRoot, selfEvolutionIntent } from "@harness/context";
 import { SessionStore, isSessionId, listSessions, sessionPath, usageSummary } from "@harness/sessions";
 import { askRouted, type OrchestratorContext } from "../../cli/src/orchestrator.ts";
@@ -81,10 +81,12 @@ async function buildWebContext(profile: string, session = new SessionStore(profi
   const s0 = loadSettings();
   for (const cm of s0.customModels ?? []) {
     const [prov, ...rest] = cm.id.split("/");
+    const backend = discovered.providers.get(prov ?? "custom");
+    if (models.some(model => model.id === cm.id)) continue;
     models.push({
       id: cm.id, model: rest.join("/") || cm.id, provider: prov ?? "custom",
       name: cm.display ?? cm.id,
-      capabilities: { coding: cm.coding ?? 7, reasoning: cm.reasoning ?? 7, context: cm.context ?? 128000, billing: (cm.billing as never) ?? "api", longContext: (cm.context ?? 0) > 400_000 },
+      capabilities: { ...backend?.capabilities(rest.join("/")), coding: cm.coding ?? 7, reasoning: cm.reasoning ?? 7, context: cm.context ?? 128000, billing: (cm.billing as never) ?? "api", longContext: (cm.context ?? 0) > 400_000, tools: backend?.capabilities(rest.join("/")).tools === true },
     });
   }
   return {
@@ -319,9 +321,10 @@ function runRoutine(r: Routine, profile: string): string {
         const task = r.steps[i]!;
         session.append({ v: 1, ts: ts(), kind: "user-message", text: task });
         const history = session.messages().slice(1, -1); // skip the title turn
-        const decision = route({ task, models: pool, health: ctx.health, delegation: ctx.delegation, pinnedModel: pin, requiresTools: needsSelfTools(task) || undefined });
+        const useTools = needsTools(task, session);
+        const decision = route({ task, models: pool, health: ctx.health, delegation: ctx.delegation, pinnedModel: pin, requiresTools: useTools });
         const target = pool.find((m) => m.id === decision.selected);
-        const request = agentRequest(workspace, task);
+        const request = { ...agentRequest(workspace, task), tools: useTools };
         const messages = target
           ? compileContext(task, target, { cwd: request.cwd, history, skillInstructions: toolsHint(), self: selfKnowledge(profile, request.cwd) })
           : [{ role: "user" as const, content: task }];
@@ -333,10 +336,10 @@ function runRoutine(r: Routine, profile: string): string {
           const result = await askRouted({ ...ctx, models: pool, session }, task, messages, {
             pinnedModel: pin,
             request,
-            requiresTools: needsSelfTools(task) || undefined,
+            requiresTools: useTools,
             onEvent: (e) => { if (e.type === "tool-call") stepToolPaths.push(...toolCallPaths(e.arguments)); },
           });
-          const outputs = AGENTIC_PROVIDERS.has(result.providerUsed) ? detectArtifacts(workspace, before, stepStart, result.text, stepToolPaths) : [];
+          const outputs = pool.find(model => model.id === result.modelUsed)?.capabilities.tools ? detectArtifacts(workspace, before, stepStart, result.text, stepToolPaths) : [];
           for (const a of outputs) {
             session.append({ v: 1, ts: ts(), kind: "artifact", path: a.path, note: "output" });
           }
@@ -376,7 +379,7 @@ const PROFILE_RE = /^[a-z0-9_-]+$/i;
 const AGENT_TIMEOUT_MS = 20 * 60_000;
 const MAX_UPLOAD = 25 * 1024 * 1024;
 
-/** Per-call adapter options: CLI agents run in the working folder with the chosen access + harness MCP servers. */
+/** All adapters receive the working folder, selected access, and registered MCP servers. */
 function agentRequest(workspace: string, task = "") {
   const s = loadSettings();
   const access: "read-only" | "workspace" | "full" = s.agentAccess === "read-only" || s.agentAccess === "full" ? s.agentAccess : "workspace";
@@ -384,11 +387,15 @@ function agentRequest(workspace: string, task = "") {
   // The official DeepSeek sandbox has one writable root. Explicit self-evolve
   // requests use the source as that root without raising the selected access.
   const cwd = root && selfEvolutionIntent(task) ? root : workspace;
-  return { cwd, access, mcpConfig: mcpConfigPath(), timeoutMs: AGENT_TIMEOUT_MS, addDirs: root && root !== cwd ? [root] : [] };
+  return { cwd, access, mcpConfig: mcpConfigPath(), timeoutMs: AGENT_TIMEOUT_MS, addDirs: [] as string[] };
 }
 
 function needsSelfTools(task: string): boolean {
   return loadSettings().selfEvolve && selfEvolutionIntent(task);
+}
+
+function needsTools(task: string, session: SessionStore): boolean {
+  return needsSelfTools(task) || taskRequiresTools(task) || session.all().some(event => event.kind === "tool-call" || event.kind === "tool-result");
 }
 
 // ---- Self-knowledge + self-evolve -----------------------------------------
@@ -558,8 +565,6 @@ function snapshotFiles(root: string): Map<string, number> {
 const ARTIFACT_PATH_RE = /(?:~|\/Users\/[^/\s]+|\/home\/[^/\s]+)\/[^\n"'`<>|*]*?\.(?:png|jpe?g|webp|gif|svg|pdf|md|txt|csv|json|html?|zip|docx|xlsx|pptx|mp4|mov|mp3|wav|m4a)(?![A-Za-z0-9])/gi;
 const safeDecode = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
 
-/** Only these adapters can create files, so only their turns can produce artifacts. */
-const AGENTIC_PROVIDERS = new Set(["claude-code", "codex", "deepseek-harness"]);
 const TOOL_PATH_KEYS = new Set(["file_path", "path", "notebook_path", "filepath", "filename", "output_path", "target_file", "new_path"]);
 
 /** File paths named in an agent tool call (Claude Write/Edit/NotebookEdit, Codex file changes, MCP outputs). */
@@ -1191,7 +1196,7 @@ Bun.serve({
     }
 
     if (url.pathname === "/api/ask" && req.method === "POST") {
-      const body = (await req.json().catch(() => ({}))) as { task?: string; model?: string; sessionId?: string; escalate?: boolean; orchestrator?: boolean; noFallback?: boolean; attachments?: unknown };
+      const body = (await req.json().catch(() => ({}))) as { task?: string; model?: string; sessionId?: string; escalate?: boolean; orchestrator?: boolean; noFallback?: boolean; tools?: boolean; attachments?: unknown };
       const task = (body.task ?? "").trim();
       if (!task) return json({ error: "task required" }, 400);
       const requestedSessionId = body.sessionId === undefined ? undefined : String(body.sessionId);
@@ -1264,9 +1269,10 @@ Bun.serve({
               throw new Error("orchestrator-only model is gated off (enable in Settings, and mark the job as an orchestration)");
             }
             const effectivePin = body.model || (settings.startModel && pool.some((m) => m.id === settings.startModel) ? settings.startModel : undefined);
-            const decision0 = route({ task, models: pool, health: ctx.health, delegation: ctx.delegation, pinnedModel: effectivePin, escalate: body.escalate, requiresTools: needsSelfTools(task) || undefined });
+            const useTools = typeof body.tools === "boolean" ? body.tools : attachments.length > 0 || needsTools(task, session);
+            const decision0 = route({ task, models: pool, health: ctx.health, delegation: ctx.delegation, pinnedModel: effectivePin, escalate: body.escalate, requiresTools: useTools });
             const target = pool.find((m) => m.id === decision0.selected);
-            const request = agentRequest(workspace, task);
+            const request = { ...agentRequest(workspace, task), tools: useTools };
             if (turnAbort.signal.aborted) throw new Error("turn cancelled");
             const messages = target
               ? compileContext(task + attached.forModel, target, { cwd: request.cwd, history, skillInstructions: toolsHint(), self: selfKnowledge(profile, request.cwd) })
@@ -1280,7 +1286,7 @@ Bun.serve({
             const routedCtx: OrchestratorContext = { ...ctx, models: pool };
             const result = await askRouted(routedCtx, task, messages, {
               request: { ...request, signal: turnAbort.signal },
-              requiresTools: needsSelfTools(task) || undefined,
+              requiresTools: useTools,
               pinnedModel: effectivePin,
               escalate: body.escalate,
               noFallback: body.noFallback,
@@ -1292,11 +1298,11 @@ Bun.serve({
                   toolPaths.push(...toolCallPaths(e.arguments));
                   send({ t: "tool", id: e.id, name: e.name });
                 }
+                else if (e.type === "tool-result") send({ t: "tool-result", id: e.id, name: e.name, isError: e.isError === true });
               },
             });
             for (const fb of result.fellBack) send({ t: "fallback", ...fb });
-            // only agents that can write files produce artifacts; API replies never offer downloads
-            if (AGENTIC_PROVIDERS.has(result.providerUsed)) emitArtifacts(result.text);
+            if (pool.find(model => model.id === result.modelUsed)?.capabilities.tools) emitArtifacts(result.text);
             emitSelfChange();
             if (result.outcome === "completed") send({ t: "done", model: result.modelUsed, text: result.text, usage: result.usage });
             else if (result.outcome === "interrupted") send({ t: "interrupted", model: result.modelUsed, text: result.text, error: result.error, usage: result.usage });
