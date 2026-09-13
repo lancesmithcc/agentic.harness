@@ -129,3 +129,17 @@ HARNESS_QA_MODELS=local node scripts/verify-model-tools.mjs
 ```
 
 The verifier uses temporary homes, workspaces, and an MCP fixture. It does not use real chat history or enable self-evolve. JSON reports stay local under `docs/qa`.
+
+## Chat working folders and explicit self-evolution — September 13, 2026
+
+Two problems caused source confusion: execution consulted the profile's current folder on every turn, and the system prompt always described the harness source tree. A chat now owns durable `session-context` metadata for its folder and Self-evolve state. Legacy chats recover their latest recorded folder without rewriting the log. Explicit selection becomes authoritative over older workspace artifacts. Profile defaults apply only to new chats, and unavailable folders fail clearly instead of silently selecting another directory.
+
+Ordinary requests receive brief agent identity and the selected project scope. Source-specific context appears only for an explicit harness inquiry or edit request. Descriptive harness questions use read-only access. Harness edits require an explicit request and that chat's enabled 🧬 control; ordinary project work does not create source checkpoints. A source task temporarily changes execution cwd while preserving the selected chat folder for subsequent work.
+
+The chat composer now contains the **🧬** toggle with the exact tooltip **self evolve**, plus a small options caret for the source checkout and GitHub sync. Settings still contains accounts and access controls. Folder/toggle changes preserve the conversation, are blocked during its active turn, and survive reload. Pending context saves and transcript loads block sending; changing chats invalidates stale responses without leaving controls disabled.
+
+Verification: **108 tests passed**, 389 assertions across 21 files, plus TypeScript, strict browser regression, diff checks, and Bun audit (zero reported vulnerabilities). Isolated HTTP tests cover two folders, a changed profile default, server restart, legacy metadata, uploads, preserved messages, missing folders, active-turn conflicts, source-root read-only access, and no source checkpoint for ordinary work with Self-evolve enabled. Browser checks cover stale status/context responses, disabled sending, restored Settings access, the exact tooltip, and the options panel fitting a 390px viewport.
+
+- [Chat Self-evolve options at 390px](qa/ui-self-evolve-options.png)
+
+The rebuilt desktop server also passed the live `verify-self-evolve.mjs` workflow: edit and verify a disposable harness source file, keep the same chat's project folder, answer an ordinary “for this app” follow-up from that project without making a source checkpoint, and restore the source with an append-only rollback. The observed workflow took 13.860 seconds; this is a smoke measurement, not a latency guarantee. The fixture used no real chat data and performed no remote push.

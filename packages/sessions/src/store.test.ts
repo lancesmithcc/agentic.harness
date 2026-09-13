@@ -117,4 +117,50 @@ describe("SessionStore", () => {
     const restored = new SessionStore("home", "tool-result-replay").all();
     expect(restored).toContainEqual(expect.objectContaining({ kind: "tool-result", id: "call-1", content: "fixture output" }));
   });
+
+  test("persists independent per-chat workspace and self-evolve context", () => {
+    const first = new SessionStore("home", "context-a");
+    const second = new SessionStore("home", "context-b");
+    expect(first.context()).toEqual({ selfEvolve: false });
+    first.setContext({ workspace: "/tmp/context-a", selfEvolve: true });
+    second.setContext({ workspace: "/tmp/context-b" });
+    const otherProfile = new SessionStore("work", "context-a");
+    otherProfile.setContext({ workspace: "/tmp/work-context", selfEvolve: false });
+    expect(new SessionStore("home", "context-a").context()).toEqual({ workspace: "/tmp/context-a", selfEvolve: true });
+    expect(new SessionStore("home", "context-b").context()).toEqual({ workspace: "/tmp/context-b", selfEvolve: false });
+    expect(new SessionStore("work", "context-a").context()).toEqual({ workspace: "/tmp/work-context", selfEvolve: false });
+    expect(listSessions("home").find(session => session.id === "context-a")).toMatchObject({ workspace: "/tmp/context-a", selfEvolve: true });
+  });
+
+  test("recovers legacy workspace until an explicit context takes precedence", () => {
+    const store = new SessionStore("work", "legacy-context");
+    store.append({ v: 1, ts: ts(), kind: "session-start", sessionId: "legacy-context", profile: "work", cwd: "/tmp/start" });
+    store.append({ v: 1, ts: ts(), kind: "artifact", path: "/tmp/artifact", note: "workspace" });
+    expect(store.context()).toEqual({ workspace: "/tmp/artifact", selfEvolve: false });
+    store.setContext({ workspace: "/tmp/explicit", selfEvolve: true });
+    store.append({ v: 1, ts: ts(), kind: "artifact", path: "/tmp/later-legacy", note: "workspace" });
+    expect(new SessionStore("work", "legacy-context").context()).toEqual({ workspace: "/tmp/explicit", selfEvolve: true });
+  });
+
+  test("makes an explicit selection of the current legacy workspace authoritative", () => {
+    const store = new SessionStore("work", "legacy-current-context");
+    store.append({ v: 1, ts: ts(), kind: "session-start", sessionId: "legacy-current-context", profile: "work", cwd: "/tmp/start" });
+    store.append({ v: 1, ts: ts(), kind: "artifact", path: "/tmp/current", note: "workspace" });
+    expect(store.context()).toEqual({ workspace: "/tmp/current", selfEvolve: false });
+    store.setContext({ workspace: "/tmp/current" });
+    expect(store.all().filter(event => event.kind === "session-context" && event.workspace === "/tmp/current")).toHaveLength(1);
+    store.append({ v: 1, ts: ts(), kind: "artifact", path: "/tmp/later-legacy", note: "workspace" });
+    expect(new SessionStore("work", "legacy-current-context").context()).toEqual({ workspace: "/tmp/current", selfEvolve: false });
+  });
+
+  test("avoids redundant context writes and ignores malformed context records", () => {
+    const store = new SessionStore("home", "context-validated");
+    store.setContext({ workspace: "/tmp/valid", selfEvolve: false });
+    const count = store.all().length;
+    store.setContext({ workspace: "/tmp/valid", selfEvolve: false });
+    expect(store.all()).toHaveLength(count);
+    expect(() => store.setContext({ workspace: "relative" })).toThrow("absolute path");
+    appendFileSync(store.filePath, `${JSON.stringify({ v: 1, ts: ts(), kind: "session-context", workspace: "relative", selfEvolve: "yes" })}\n`);
+    expect(new SessionStore("home", "context-validated").context()).toEqual({ workspace: "/tmp/valid", selfEvolve: false });
+  });
 });

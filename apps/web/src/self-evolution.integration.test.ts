@@ -24,7 +24,7 @@ beforeAll(async () => {
   writeFileSync(join(bin, "claude"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
   const profile = join(data, "profiles", "home"); mkdirSync(profile, { recursive: true });
   writeFileSync(join(profile, "profile.toml"), ["[profile]", 'name="home"', ...["deepseek", "deepseek-harness", "openai", "zai", "kimi", "minimax", "openrouter"].flatMap(p => [`[providers.${p}]`, "enabled=false"])].join("\n"));
-  writeFileSync(join(data, "settings.json"), JSON.stringify({ selfEvolve: true, agentAccess: "workspace", workspaces: { home: workspace } }));
+  writeFileSync(join(data, "settings.json"), JSON.stringify({ selfSourceRoot: source, agentAccess: "workspace", workspaces: { home: workspace } }));
   const port = 34_000 + Math.floor(Math.random() * 2000); base = `http://127.0.0.1:${port}`;
   child = Bun.spawn([process.execPath, join(import.meta.dir, "server.ts")], { cwd: workspace, stdout: "ignore", stderr: "pipe", env: { HOME: root, PATH: `${bin}:/usr/bin:/bin`, HARNESS_HOME: data, HARNESS_PROFILE: "home", HARNESS_WEB_PORT: String(port) } });
   for (let i = 0; i < 100; i++) {
@@ -38,7 +38,7 @@ afterAll(async () => { child?.kill(); if (child) await child.exited; if (root) r
 
 test("own-source writes produce durable commits, survive reload, and rollback appends history", async () => {
   const head = git("rev-parse", "HEAD");
-  const response = await request("/api/ask", { task: "Rewrite your own harness code in src/engine.ts", model: "codex/default", noFallback: true });
+  const response = await request("/api/ask", { task: "Rewrite your own harness code in src/engine.ts", model: "codex/default", selfEvolve: true, noFallback: true });
   const raw = await response.text();
   const events = raw.split("\n\n").filter(s => s.startsWith("data:")).map(s => JSON.parse(s.slice(5)));
   expect(events.at(-1)?.t).toBe("done");

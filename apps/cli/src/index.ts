@@ -19,7 +19,7 @@ import { buildSelfKnowledge, compileContext, findSourceRoot } from "@harness/con
 import { loginSubscription } from "@harness/profiles";
 import { SessionStore, listSessions, usageSummary } from "@harness/sessions";
 import { askRouted, runPipeline, type OrchestratorContext } from "./orchestrator.ts";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ProviderHealth } from "@harness/core";
@@ -35,8 +35,8 @@ function currentProfile(opts: { profile?: string }): string {
   return opts.profile ?? program.opts().profile ?? activeProfileName();
 }
 
-async function buildContext(profile: string, opts: { noHealth?: boolean } = {}): Promise<OrchestratorContext> {
-  const fleet = await buildFleet(profile);
+async function buildContext(profile: string, opts: { noHealth?: boolean; cwd?: string } = {}): Promise<OrchestratorContext> {
+  const fleet = await buildFleet(profile, opts.cwd);
   const models = await fleetModels(fleet);
   const health = new Map<string, ProviderHealth>();
   if (!opts.noHealth) {
@@ -46,7 +46,7 @@ async function buildContext(profile: string, opts: { noHealth?: boolean } = {}):
       }),
     );
   }
-  const loaded = loadConfig(profile);
+  const loaded = loadConfig(profile, opts.cwd);
   const delegationDoc = findDelegationDoc(loaded.projectDir, HARNESS_HOME, profile);
   const delegation = delegationDoc ? parseDelegation(delegationDoc.text, delegationDoc.path) : null;
   const session = new SessionStore(profile);
@@ -103,10 +103,13 @@ program
   .action(async (taskParts: string[], opts: { profile?: string; model?: string; auto?: boolean; escalate?: boolean; session?: string; json?: boolean }) => {
     const profile = currentProfile(opts);
     const task = taskParts.join(" ");
-    const ctx = await buildContext(profile);
-    const session = opts.session ? new SessionStore(profile, opts.session) : ctx.session;
+    const session = new SessionStore(profile, opts.session);
     if (opts.session && !existsSync(session.filePath)) throw new Error(`Session ${opts.session} does not exist in profile ${profile}`);
-    if (!opts.session) session.append({ v: 1, ts: new Date().toISOString(), kind: "session-start", sessionId: session.sessionId, profile, cwd: process.cwd() });
+    const workspace = session.context().workspace ?? process.cwd();
+    if (!existsSync(workspace) || !statSync(workspace).isDirectory()) throw new Error("This chat's working folder is unavailable. Choose an existing folder in the chat.");
+    const ctx = await buildContext(profile, { cwd: workspace });
+    if (!opts.session) session.append({ v: 1, ts: new Date().toISOString(), kind: "session-start", sessionId: session.sessionId, profile, cwd: workspace });
+    session.setContext({ workspace });
     ctx.session = session;
     session.append({ v: 1, ts: new Date().toISOString(), kind: "user-message", text: task });
 
@@ -116,13 +119,14 @@ program
     const target = ctx.models.find((m) => m.id === decision0.selected);
     const messages = target
       ? compileContext(task, target, {
-          cwd: process.cwd(),
+          cwd: workspace,
           history,
           // the CLI knows itself but runs agents read-only, so self-evolve is off here
           self: buildSelfKnowledge({
             sourceRoot: findSourceRoot(dirname(fileURLToPath(import.meta.url))),
             profile,
-            workspace: process.cwd(),
+            workspace,
+            task,
             access: "read-only",
             selfEvolve: false,
             client: "cli",
@@ -144,7 +148,7 @@ program
     let streamed = false;
     let result;
     try {
-      result = await askRouted(ctx, task, messages, { pinnedModel: pin, escalate: opts.escalate, request: { cwd: process.cwd(), access: "read-only", profile, signal: abort.signal }, onEvent: (e) => {
+      result = await askRouted(ctx, task, messages, { pinnedModel: pin, escalate: opts.escalate, request: { cwd: workspace, access: "read-only", profile, signal: abort.signal }, onEvent: (e) => {
         if (opts.json || e.type !== "text-delta") return;
         streamed = true;
         process.stdout.write(e.text);

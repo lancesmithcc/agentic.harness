@@ -3,9 +3,8 @@
  * where its source lives and how that source is laid out — added to every session so the
  * agent can explain itself and, when Settings → Self-evolve is on, change its own code.
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import type { Dirent } from "node:fs";
-import { dirname, extname, join } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 export interface SelfState {
   /** Monorepo root of the harness source, or null when this runtime has no source (compiled app). */
@@ -15,7 +14,9 @@ export interface SelfState {
   access: "read-only" | "workspace" | "full";
   selfEvolve: boolean;
   client: "web" | "cli" | "desktop";
-  /** Small models read the source map on demand instead of receiving it every turn. */
+  /** Current user task, used only to decide whether source-specific context is warranted. */
+  task?: string;
+  /** Retained for call-site compatibility with model-context settings. */
   contextWindow?: number;
 }
 
@@ -26,12 +27,30 @@ export interface SelfState {
  * configured workspace.
  */
 export function selfEvolutionIntent(task: string): boolean {
-  const text = task.toLowerCase().replace(/\s+/g, " ").trim();
+  // Quoted text often reports an instruction rather than making one. Remove
+  // paired quoted spans, but leave the surrounding request (and quoted file
+  // paths) intact so `rewrite your own code in "src/engine.ts"` still works.
+  const text = task.toLowerCase().replace(/(?:"[^"\n]*"|'[^'\n]*'|“[^”\n]*”|‘[^’\n]*’)/g, " ").replace(/\s+/g, " ").trim();
   if (!text) return false;
-  if (/\bself[ -]?evolve\b/.test(text)) return true;
-  if (/\b(?:rewrite|change|edit|update|fix|repair|refactor|implement|reorganize)\s+(?:your\s+(?:own\s+)?(?:code|source)|own\s+source|agentic\.harness(?:\s+(?:ui|server|app|code|source))?|the\s+harness)\b/.test(text)) return true;
-  return /\b(?:create|delete|rewrite|change|edit|update|fix|repair|refactor|implement|reorganize)\b/.test(text)
-    && /\b(?:yourself|your\s+own\s+(?:code|source)|own\s+source|self|harness|agentic\.harness)\b/.test(text);
+  // A toggle, a negated mutation, or a reference to a test/project harness must never
+  // make a project request run from the agent source tree.
+  if (/\b(?:test(?:ing)?|project)\s+harness\b/.test(text)) return false;
+  const action = "(?:rewrite|change|edit|update|fix|repair|refactor|implement|reorganize|create|delete|add)";
+  const directRequest = new RegExp(`^(?:can|could|would|will)\\s+(?:you|we)\\s+(?:please\\s+)?${action}\\b`).test(text);
+  if (!directRequest && /^(?:how|what|why|where|when|which|explain|describe|summarize|tell me|show me|is|are|does|do|can|could|would|will|should)\b/.test(text)) return false;
+  if (new RegExp(`\\b(?:don't|do not|never|avoid)\\s+(?:please\\s+)?${action}\\b`).test(text)) return false;
+  const selfTarget = "(?:your(?: own)?(?: harness)? (?:code|source)|own source|agentic\\.harness(?:['’]s)?(?: (?:ui|server|app|code|source|history))?|the harness(?: (?:ui|server|app|code|source|history))?|harness (?:ui|server|app|code|source|history))";
+  return new RegExp(`\\b${action}\\s+${selfTarget}\\b`).test(text)
+    || new RegExp(`\\b(?:in|for)\\s+${selfTarget}\\s*[:,]\\s*${action}\\b`).test(text)
+    || new RegExp(`\\b${action}\\b[^.!?]{0,80}\\b(?:in|of|for|to)\\s+(?:agentic\\.harness|your own (?:code|source))\\b`).test(text);
+}
+
+/** A direct, non-mutating question about agentic.harness may receive source context. */
+export function harnessInquiry(task: string): boolean {
+  const text = task.toLowerCase().replace(/(?:"[^"\n]*"|'[^'\n]*'|“[^”\n]*”|‘[^’\n]*’)/g, " ").replace(/\s+/g, " ").trim();
+  if (!text || /\b(?:test(?:ing)?|project)\s+harness\b/.test(text)) return false;
+  return /\b(?:agentic\.harness|(?:the )?harness)\b/.test(text)
+    && /\b(?:how|what|why|where|can|could|would|should|does|explain|describe|architecture|work|edit|change|modify)\b/.test(text);
 }
 
 /** Walk up from `start` to the agentic.harness monorepo root (package.json named "deepharness"). */
@@ -51,103 +70,6 @@ export function findSourceRoot(start: string): string | null {
   return null;
 }
 
-/** Stable one-liners for the files an agent most often needs; others fall back to their header comment. */
-const DESCRIBE: Record<string, string> = {
-  "apps/web/src/server.ts": "web server: HTTP API + SSE chat (/api/ask), settings, logins, soul.md, routines + heartbeat scheduler, uploads/artifacts, Tools & MCP registry, self-evolve checkpoints",
-  "apps/web/index.html": "the entire web UI (vanilla JS): chat, attachments, artifacts, routines, settings, tools pages",
-  "apps/web/brand.css": "design system and all UI styling (agentic brand, light and dark)",
-  "apps/cli/src/index.ts": "`harness` CLI commands (ask, status, profile, auth, usage, session)",
-  "apps/cli/src/orchestrator.ts": "askRouted: one routed call with the fallback chain; multi-agent pipeline",
-  "apps/desktop/src-tauri/src/main.rs": "agentic.harness macOS app shell (Tauri): splash, starts or reuses harness-server, downloads, external links",
-  "packages/context/src/compiler.ts": "builds each model's messages: soul.md, self-knowledge, git state, relevant files, trimmed history",
-  "packages/context/src/self.ts": "this self-knowledge block and the source-map generator",
-  "packages/core/src/types.ts": "shared types: HarnessRequest, streaming events, model capabilities, session events",
-  "packages/core/src/config.ts": "HARNESS_HOME, profiles and config precedence",
-  "packages/core/src/secrets.ts": "macOS Keychain secrets",
-  "packages/providers/src/registry.ts": "assembles the provider fleet for a profile",
-  "packages/providers/src/deepseek-harness.ts": "official DeepSeek Harness SDK adapter (Node bridge, scoped permissions, MCP patches)",
-  "packages/providers/runtime/deepseek-bridge.mjs": "Node-side DeepSeek SDK bridge: streamed events, local MCP-to-Cordis patch translation",
-  "packages/providers/src/claude-code.ts": "Claude Code CLI adapter (subscription; permission modes, --add-dir, MCP config)",
-  "packages/providers/src/codex.ts": "Codex CLI adapter (ChatGPT subscription; sandbox modes)",
-  "packages/providers/src/openai-compat.ts": "API streaming plus shared SDK file/shell/MCP execution for every model backend",
-  "packages/providers/src/harness-runtime.ts": "provider-neutral transport into the official SDK agent loop, permissions and cancellation",
-  "packages/providers/src/local.ts": "local models: llama.cpp, Ollama, LM Studio, MLX",
-  "packages/router/src/router.ts": "task router: capability scoring, delegation rules, fallbacks",
-  "packages/router/src/delegation.ts": "delegation.md parser",
-  "packages/router/src/classify.ts": "task classifier",
-  "packages/sessions/src/store.ts": "session event log (JSONL) and usage records",
-  "packages/skills/src/scan.ts": "discovers agent skills and MCP servers",
-  "packages/tools/src/scan.ts": "discovers CLI tools on PATH",
-  "packages/profiles/src/auth.ts": "profile switching and isolated subscription logins",
-};
-
-function listSource(root: string): string[] {
-  const out: string[] = [];
-  const addFile = (rel: string) => {
-    try {
-      if (statSync(join(root, rel)).isFile()) out.push(rel);
-    } catch {
-      // not present in this checkout
-    }
-  };
-  const addDir = (relDir: string, exts: string[]) => {
-    let entries: Dirent[] = [];
-    try {
-      entries = readdirSync(join(root, relDir), { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      if (e.isFile() && exts.includes(extname(e.name)) && !/\.test\.|\.d\.ts$/.test(e.name)) out.push(`${relDir}/${e.name}`);
-    }
-  };
-  addFile("apps/web/index.html");
-  addFile("apps/web/brand.css");
-  addDir("apps/web/src", [".ts"]);
-  addDir("apps/cli/src", [".ts"]);
-  addDir("apps/desktop/src-tauri/src", [".rs"]);
-  let packages: Dirent[] = [];
-  try {
-    packages = readdirSync(join(root, "packages"), { withFileTypes: true });
-  } catch {
-    // no packages folder
-  }
-  for (const p of packages) if (p.isDirectory()) addDir(`packages/${p.name}/src`, [".ts"]);
-  return out.sort();
-}
-
-function headerLine(text: string): string {
-  for (const line of text.split("\n").slice(0, 12)) {
-    const m = line.match(/^\s*(?:\/\*\*|\*|\/\/)\s*(.+?)\s*(?:\*\/)?$/);
-    if (m && m[1] && /[A-Za-z]{3}/.test(m[1]) && !m[1].startsWith("FILE:")) return m[1].slice(0, 120);
-  }
-  return "";
-}
-
-const mapCache = new Map<string, { at: number; text: string }>();
-
-/** One line per source file (path, size, purpose). Cached for a minute so every turn stays cheap. */
-export function sourceMap(root: string): string {
-  const hit = mapCache.get(root);
-  if (hit && Date.now() - hit.at < 60_000) return hit.text;
-  const lines: string[] = [];
-  for (const rel of listSource(root)) {
-    let text = "";
-    try {
-      text = readFileSync(join(root, rel), "utf8");
-    } catch {
-      continue;
-    }
-    const count = text.split("\n").length;
-    if (count < 6) continue; // barrel re-exports
-    const what = DESCRIBE[rel] ?? headerLine(text);
-    lines.push(`- ${rel} (${count} lines)${what ? ` — ${what}` : ""}`);
-  }
-  const out = lines.join("\n");
-  mapCache.set(root, { at: Date.now(), text: out });
-  return out;
-}
-
 const CLIENT_NAMES: Record<SelfState["client"], string> = {
   web: "the web UI (Bun server in apps/web)",
   cli: "the `harness` CLI (apps/cli)",
@@ -155,34 +77,32 @@ const CLIENT_NAMES: Record<SelfState["client"], string> = {
 };
 
 export function buildSelfKnowledge(state: SelfState): string {
+  const task = state.task ?? "";
+  const changingSelf = selfEvolutionIntent(task);
+  const askingAboutHarness = changingSelf || harnessInquiry(task);
   const applyTiming = state.client === "desktop"
     ? `This is the packaged desktop app: source edits do not change the running UI, server, providers, or native shell. Rebuild and install the desktop bundle using apps/desktop/README.md, then relaunch the app for every source change to take effect.`
     : `This is a source-run client: apps/web/index.html and brand.css take effect after page reload; server, provider, router, and package changes require restarting the Bun harness server.`;
   const parts = [
-    `# Self-knowledge — you are running inside agentic.harness`,
-    `Your name is agentic.harness. You are the user's local multi-model agent runtime: one interface, many minds. Each task is routed to the most suitable model — Claude Code, Codex/ChatGPT, Kimi, Z.AI GLM, DeepSeek, MiniMax, OpenRouter or a local model — following delegation.md, with automatic fallback when a model fails.`,
-    `Identity rule: Introduce yourself as agentic.harness. DeepHarness and deepwork are legacy package/folder names, never your name. The underlying model is a replaceable provider; do not identify the application as that model.`,
-    `Clients: the web UI on port 8790 (apps/web), the \`harness\` CLI (apps/cli) and the agentic.harness macOS app (apps/desktop). This session runs through ${CLIENT_NAMES[state.client]}.`,
-    `Features: routed chat with fallback; file attachments (saved to <working folder>/.harness/uploads); files created in the working folder show up in chat as downloadable artifacts; routines with heartbeat schedules; soul.md standing instructions; a Tools & MCP registry; per-profile Claude and ChatGPT logins; agent file access levels; self-evolve.`,
-    `Tool access is shared across connected model backends. API and local models use the official SDK agent loop for action tasks; Claude Code and Codex use their native tools. Your selected file access still applies. Only claim execution when an actual tool result confirms it.`,
-    `Right now: profile ${state.profile} · working folder ${state.workspace} · agent file access ${state.access} · self-evolve ${state.selfEvolve ? "on" : "off"}.`,
-    `For compatibility, user data stays in ~/.deepharness (settings.json, soul.md, routines.json, tools.json, mcp.json, delegation.md, profiles/<name>/sessions). Never delete or rewrite it unless the user explicitly asks.`,
+    `Your name is agentic.harness. You are the user's local multi-model agent runtime.`,
+    `Current profile: ${state.profile}. Selected working folder: ${state.workspace}. Treat it as the default referent and scope for every ordinary request. Do not switch to agentic.harness source merely because Self-evolve is on or the task mentions an app, code, UI, history, or a harness project.`,
+    `Agent file access: ${state.access}. Self-evolve: ${state.selfEvolve ? "on" : "off"}. Only claim execution after actual tool results. Preserve ~/.deepharness user data unless the user explicitly asks to change it.`,
   ];
 
-  if (state.sourceRoot) {
+  if (askingAboutHarness && state.sourceRoot) {
     parts.push(
-      `## Your source code: ${state.sourceRoot}\nBun + TypeScript monorepo (workspaces apps/* and packages/*). Docs: README.md, apps/desktop/README.md. When asked how you work, read the relevant files rather than guessing (agents with file access can open them).\n${state.contextWindow && state.contextWindow <= 16_384 ? "Read README.md for the source layout when needed." : sourceMap(state.sourceRoot)}`,
+      `This task explicitly concerns agentic.harness. Its source is available at ${state.sourceRoot}; read only relevant files for an explanation. Unless this is an explicit modification request, keep the selected working folder as the working directory and treat source access as read-only.`,
     );
-  } else {
+  } else if (askingAboutHarness) {
     parts.push(
-      `## Your source code\nNot available in this runtime (no source folder configured). You can still describe your architecture from this summary.`,
+      `This task explicitly concerns agentic.harness, but no source folder is configured. Describe only what this context supports.`,
     );
   }
 
-  if (state.selfEvolve && state.sourceRoot) {
+  if (state.selfEvolve && state.sourceRoot && changingSelf) {
     parts.push(
       [
-        `## Self-evolve is on`,
+        `## Explicit self-evolution request`,
         state.access === "read-only"
           ? `Agent file access is read-only, which overrides Self-evolve: do not edit files. Describe the requested change and say that Settings must raise agent file access before it can be applied.`
           : `When the user asks you to change the harness itself, you may create, edit, delete, or reorganize any source under ${state.sourceRoot}, including UI, server, providers, router, desktop app, build tooling, tests, and documentation. Whole-architecture rewrites are allowed when the user asks for them. Preserve ~/.deepharness user data.`,
@@ -194,12 +114,14 @@ export function buildSelfKnowledge(state: SelfState): string {
         `5. Explain any rebuild, restart, or user action still needed. Do not claim a source edit is active until its relevant reload or rebuild has occurred.`,
       ].join("\n"),
     );
-  } else if (state.selfEvolve) {
-    parts.push(`## Self-evolve is on, but no source folder is configured\nYou cannot change your code from this runtime. Point Settings → Self-evolve at the agentic.harness source folder.`);
-  } else {
+  } else if (changingSelf && state.selfEvolve) {
+    parts.push(`Self-evolve is on, but no source folder is configured. This task cannot modify agentic.harness from this runtime.`);
+  } else if (changingSelf) {
     parts.push(
-      `## Self-evolve is off\nYou can read and explain your own code, but do not modify files under your source folder. If the user wants the harness changed, describe the change and mention that turning on Settings → Self-evolve lets you make it. Read-only agent access also prevents edits even when Self-evolve is on.`,
+      `This is an explicit request to modify agentic.harness, but Self-evolve is off. Do not modify its source. Tell the user to enable the chat 🧬 Self-evolve control; read-only access still overrides it.`,
     );
+  } else if (state.selfEvolve) {
+    parts.push(`Self-evolve is armed only for an explicit request to modify agentic.harness. This ordinary task remains scoped to the selected working folder.`);
   }
   return parts.join("\n\n");
 }
