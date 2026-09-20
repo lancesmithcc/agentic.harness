@@ -1,8 +1,8 @@
-# agentic.harness
+# agentic.sidekick
 
 **One agent environment, many minds.**
 
-A local agent runtime with a web interface, macOS desktop app, and CLI. The harness reads your task, project context, provider availability, capability metadata, and `delegation.md`, then routes the work to a suitable model. Its name and runtime identity are **agentic.harness**; existing `~/.deepharness` data paths remain compatible.
+A local agent runtime with a web interface, macOS desktop app, and CLI. The harness reads your task, project context, provider availability, capability metadata, and `delegation.md`, then routes the work to a suitable model. Its name and runtime identity are **agentic.sidekick**; the npm workspace, the `harness` CLI, the GitHub repository, and existing `~/.deepharness` data paths keep their original names so installs and self-evolve checkpoints stay compatible.
 
 ## Quick start
 
@@ -32,11 +32,25 @@ For the web interface, run `bun apps/web/src/server.ts` and open `http://127.0.0
 | OpenRouter | API key | dynamic model discovery |
 | Local | none | llama.cpp / Ollama / LM Studio / MLX autodetect (e.g. gemma-4-12b-it on :8088) |
 
-Subscription credentials stay owned by their official CLIs. API keys can come from the local process environment or macOS Keychain; committed config files should only hold `keychain://harness/<profile>/<provider>` references.
+Subscription credentials stay owned by their official CLIs. **Every API key is your own** — none is compiled into the app. Each provider resolves its key in this order: a `keychain://` or `env://` reference in the profile config → the provider's environment variable → this profile's macOS Keychain entry. Committed config files should only ever hold `keychain://harness/<profile>/<provider>` references.
+
+Add keys either way:
+
+```bash
+harness secret set deepseek      # stdin → Keychain, per profile
+```
+
+…or in the app under **Settings → Provider API keys**, which lists every provider (plus Jev) with the environment variable it reads, where its current key comes from, and a write-only field to store your own. A saved key goes straight to the Keychain and is never read back into the page. A provider whose environment variable is set in the launching shell says so, because that value wins over a stored one.
 
 Every API and local adapter supports file, shell, and registered MCP tools through the shared official SDK agent loop. Action tasks and follow-ups after tool work automatically use that runtime; plain text requests retain direct streaming. All routes honor the selected read-only, workspace, or full file access. Tool calls and results are saved with the chat and remain visible after reload. An API caller can explicitly select execution with `tools: true` on `/api/ask`.
 
 Local llama.cpp context limits are detected from the running server, rather than the model's theoretical maximum. Other local endpoints can set `contextWindow` in their config. Small contexts use a compact runtime that keeps file, shell and MCP tools while omitting optional orchestration tools. Source runs need the SDK's supported Node runtime; the desktop app bundles it.
+
+## Shared resources
+
+Each chat works inside its own folder. Anything an agent needs *outside* that folder — a universal `.env` of shared keys, a design library, a reference repo — is listed under **Settings → Shared resources** and travels with every request as an additional granted directory.
+
+Because `--add-dir` and the SDK sandbox both grant folders, a shared **file** grants the folder that holds it; the list says so next to the entry, so pick the narrowest path that works. Shared paths must exist when saved, and the selected **Agent file access** still governs what may be done in them. The official DeepSeek Harness sandbox allows exactly one writable root, so shared folders are withheld from that adapter below `full` access rather than failing the turn.
 
 ## Profiles
 
@@ -72,6 +86,21 @@ routing:
 ```
 
 The router classifies the task (keywords + capability + context-size signals), honors front-matter routing lists, boosts models whose *Best For* matches, demotes models whose *Avoid For* matches, prefers `local → subscription/coding-plan → API` on ties, and always emits a diverse fallback chain.
+
+### Jev decides what kind of work it is
+
+Classification is the one judgement call in routing, and a keyword list is a blunt instrument for it. With a key present, the harness asks **Jev** — [TypeSafe's System One model](https://docs.typesafe.ai) — instead. Jev answers *typed* questions and returns a probability distribution rather than prose, so one call settles both questions routing needs:
+
+- **choice** — which task category this is (`debugging`, `architecture`, `simple`, …)
+- **noul** — whether answering it requires reading, writing, or running something on this Mac
+
+```bash
+harness secret set jev          # store the key in Keychain (stdin), or export JEV_API_KEY
+harness explain "why does the login test fail after the session refactor"
+# Category: debugging (via jev, confidence 1.00)
+```
+
+Jev decides *what kind of work this is*; `delegation.md` and the capability ranking still decide *which model does it*. It is never consulted for a pinned model. Answers are cached per task for the life of the process, and routing degrades quietly: no key, a failed request, or a pick below `JEV_MIN_CONFIDENCE` (default `0.5`) falls straight back to the keyword classifier, so an offline harness routes exactly as before. `JEV_BASE_URL`, `JEV_MODEL`, and `JEV_TIMEOUT_MS` override the defaults; `HARNESS_DECISION_ENGINE=off` disables it with the key still in place.
 
 ## Commands
 
@@ -116,7 +145,7 @@ The planner/worker/reviewer pipeline routes each role independently and enforces
 
 Each chat remembers its own working folder. General questions and code requests refer to that folder; switching chats restores the folder selected for that conversation. A missing folder produces a clear error instead of redirecting work elsewhere.
 
-Enable **🧬** in the chat composer (tooltip: **self evolve**) to permit explicit changes to agentic.harness. The toggle belongs to that chat and starts off in new chats. When explicitly asked, file-capable agents can rewrite any part of the harness source: UI, runtime, routing, providers, desktop shell, build tools, and tests. Read-only access still prevents writes. Explicit self-evolve tasks temporarily use the source checkout; the chat keeps its selected project folder for subsequent ordinary work.
+Enable **🧬** in the chat composer (tooltip: **self evolve**) to permit explicit changes to agentic.sidekick. The toggle belongs to that chat and starts off in new chats. When explicitly asked, file-capable agents can rewrite any part of the harness source: UI, runtime, routing, providers, desktop shell, build tools, and tests. Read-only access still prevents writes. Explicit self-evolve tasks temporarily use the source checkout; the chat keeps its selected project folder for subsequent ordinary work.
 
 The app records before/after commits on `self-evolve`, syncs them to GitHub, and exposes a file-aware rollback action. Rollback creates another commit and preserves newer local edits. `main` holds the published application; checkpoint sync never force-pushes or changes the checked-out branch or staging area. Offline checkpoints remain local with visible sync status and retry.
 

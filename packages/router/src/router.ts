@@ -10,7 +10,8 @@
 import type { Model, ModelCapabilities, ProviderHealth, RoutingDecision, TaskCategory } from "@harness/core";
 import type { DelegationDoc } from "./delegation.ts";
 import { resolveModelRef } from "./normalize.ts";
-import { classifyTask } from "./classify.ts";
+import { classifyTask, type Classification } from "./classify.ts";
+import type { JevClassification, JevDecider } from "./jev.ts";
 
 export interface RouteInput {
   task: string;
@@ -24,6 +25,8 @@ export interface RouteInput {
   escalate?: boolean;
   /** Require an adapter that can actually execute tools/files for this task. */
   requiresTools?: boolean;
+  /** Pre-computed classification (e.g. from Jev). Skips the keyword heuristic. */
+  classification?: Classification | JevClassification;
 }
 
 const CATEGORY_CAP_KEY: Partial<Record<TaskCategory, "coding" | "reasoning" | "summarization">> = {
@@ -152,12 +155,13 @@ export function route(input: RouteInput): RoutingDecision {
     reason.push(`pinned model ${input.pinnedModel} not in fleet; routing normally`);
   }
 
-  const classification = classifyTask(matchText, { contextTokens: input.contextTokens });
+  const classification = input.classification ?? classifyTask(matchText, { contextTokens: input.contextTokens });
   const category = classification.category;
   reason.push(...classification.signals.map((s) => `signal: ${s}`));
 
   let ordered: Model[] = [];
-  let classifiedBy: RoutingDecision["classifiedBy"] = "heuristic";
+  const jev = (classification as JevClassification).jev;
+  let classifiedBy: RoutingDecision["classifiedBy"] = jev && !jev.usedFallback ? "jev" : "heuristic";
 
   // 1) Explicit front-matter routing map wins when present for the category.
   const fmList = delegation?.frontmatter?.routing?.[category];
@@ -287,4 +291,22 @@ export function route(input: RouteInput): RoutingDecision {
     classifiedBy,
     escalated: input.escalate,
   };
+}
+
+/**
+ * `route` with the decision model in front of it: Jev classifies the task (and
+ * says whether it needs tools), then the ordinary routing engine picks the
+ * model. Falls back to the keyword heuristic whenever Jev cannot answer, so an
+ * offline or unconfigured harness routes exactly as before.
+ */
+export async function routeAsync(input: RouteInput, decider?: JevDecider): Promise<RoutingDecision> {
+  if (!decider?.enabled || input.pinnedModel) return route(input);
+  const classification = await decider.classify(stripQuoted(input.task), { contextTokens: input.contextTokens });
+  return route({
+    ...input,
+    classification,
+    // Jev's read of "does this need tools" only *adds* execution; an explicit
+    // caller requirement is never downgraded by it.
+    requiresTools: input.requiresTools || classification.jev?.requiresTools === true ? true : input.requiresTools,
+  });
 }

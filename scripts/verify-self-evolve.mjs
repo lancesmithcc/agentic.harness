@@ -8,7 +8,7 @@ import { createServer } from "node:net";
 
 if (!process.env.DEEPSEEK_API_KEY) throw new Error("Set DEEPSEEK_API_KEY in the process environment first.");
 const repo = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const bundle = join(repo, "apps/desktop/src-tauri/target/release/bundle/macos/agentic.harness.app/Contents");
+const bundle = join(repo, "apps/desktop/src-tauri/target/release/bundle/macos/agentic.sidekick.app/Contents");
 const reservation = createServer();
 await new Promise((resolve, reject) => { reservation.once("error", reject); reservation.listen(Number(process.env.HARNESS_SELF_QA_PORT || 0), "127.0.0.1", resolve); });
 const port = reservation.address().port, base = `http://127.0.0.1:${port}`;

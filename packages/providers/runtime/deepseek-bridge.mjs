@@ -97,7 +97,7 @@ const toolNames = new Map();
 const close = () => harness ? (closing ??= harness.close()) : Promise.resolve();
 for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, () => { void close(); });
 try {
-  writeFileSync(patch, '- id: system-prompt\n  config:\n    personaPrefix: ' + JSON.stringify(`You are agentic.harness running ${request.route?.provider ?? 'an unknown provider'}/${request.route?.model ?? 'unknown model'}.\n${instructions}`) + '\n    personaSuffix: "Your working directory is {{cwd}}."\n' + routeConfigPatch() + compactRuntimePatch() + mcpPatch(), { mode: 0o600 });
+  writeFileSync(patch, '- id: system-prompt\n  config:\n    personaPrefix: ' + JSON.stringify(`You are agentic.sidekick running ${request.route?.provider ?? 'an unknown provider'}/${request.route?.model ?? 'unknown model'}.\n${instructions}`) + '\n    personaSuffix: "Your working directory is {{cwd}}."\n' + routeConfigPatch() + compactRuntimePatch() + mcpPatch(), { mode: 0o600 });
   mkdirSync(request.home, { recursive: true, mode: 0o700 });
   harness = new DeepSeekHarness({
     profile: 'sdk', dshHome: request.home, cwd: request.cwd,

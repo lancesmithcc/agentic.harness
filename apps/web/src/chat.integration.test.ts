@@ -82,7 +82,7 @@ describe("chat persistence through HTTP, routing and a real SSE adapter", () => 
     const last = calls.at(-1)!;
     expect(last.messages.some(m => m.role === "user" && m.content === "hello fixture")).toBe(true);
     expect(last.messages.some(m => m.role === "assistant" && m.content.includes("Saved partial"))).toBe(true);
-    expect(last.messages.find(m => m.role === "system")?.content).toContain("Your name is agentic.harness");
+    expect(last.messages.find(m => m.role === "system")?.content).toContain("Your name is agentic.sidekick");
     const list = await fetch(`${base}/api/sessions?profile=work`).then(r => r.json()); expect(list.sessions.length).toBe(1);
   }, 20_000);
   test("Stop aborts model work, keeps partial reply, and prevents concurrent turns", async () => {

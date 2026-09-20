@@ -36,14 +36,25 @@ async function boundedModels(provider: ModelProvider, timeoutMs: number): Promis
   }
 }
 
-const API_PROVIDER_FACTS: Record<string, { envVar: string; make: (key: string | null) => OpenAICompatProvider }> = {
-  deepseek: { envVar: "DEEPSEEK_API_KEY", make: (k) => new DeepSeekProvider(k) },
-  zai: { envVar: "ZAICODINGPLAN_KEY", make: (k) => new ZAIProvider(k) },
-  kimi: { envVar: "KIMI_API_KEY", make: (k) => new KimiProvider(k) },
-  minimax: { envVar: "MINIMAX_API_KEY", make: (k) => new MiniMaxProvider(k) },
-  openrouter: { envVar: "OPENROUTER_API_KEY", make: (k) => new OpenRouterProvider(k) },
-  openai: { envVar: "OPENAI_KEY", make: (k) => new OpenAIProvider(k) },
+const API_PROVIDER_FACTS: Record<string, { label: string; envVar: string; make: (key: string | null) => OpenAICompatProvider }> = {
+  deepseek: { label: "DeepSeek", envVar: "DEEPSEEK_API_KEY", make: (k) => new DeepSeekProvider(k) },
+  zai: { label: "Z.AI Coding Plan", envVar: "ZAICODINGPLAN_KEY", make: (k) => new ZAIProvider(k) },
+  kimi: { label: "Kimi", envVar: "KIMI_API_KEY", make: (k) => new KimiProvider(k) },
+  minimax: { label: "MiniMax", envVar: "MINIMAX_API_KEY", make: (k) => new MiniMaxProvider(k) },
+  openrouter: { label: "OpenRouter", envVar: "OPENROUTER_API_KEY", make: (k) => new OpenRouterProvider(k) },
+  openai: { label: "OpenAI", envVar: "OPENAI_KEY", make: (k) => new OpenAIProvider(k) },
 };
+
+/**
+ * Providers that take a bring-your-own API key, for any UI that offers to store
+ * one. Keys are never compiled in: each resolves from the profile config
+ * reference, then the environment variable, then this profile's Keychain entry.
+ */
+export const API_KEY_PROVIDERS: ReadonlyArray<{ id: string; label: string; envVar: string }> =
+  Object.entries(API_PROVIDER_FACTS).map(([id, facts]) => ({ id, label: facts.label, envVar: facts.envVar }));
+
+/** The extra key the DeepSeek SDK route reuses when it has no key of its own. */
+export const DEEPSEEK_HARNESS_PROVIDER = { id: "deepseek-harness", label: "DeepSeek Harness (official SDK)", envVar: "DEEPSEEK_API_KEY" } as const;
 
 /** Build against the caller's workspace so .harness provider overrides apply. */
 export async function buildFleet(profileName?: string, cwd?: string): Promise<Fleet> {

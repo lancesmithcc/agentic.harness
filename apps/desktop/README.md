@@ -1,6 +1,6 @@
-# agentic.harness — macOS app
+# agentic.sidekick — macOS app
 
-A native macOS window (Tauri 2) around the agentic.harness web UI.
+A native macOS window (Tauri 2) around the agentic.sidekick web UI.
 
 ## What happens at launch
 
@@ -25,7 +25,7 @@ bun run build
 ```
 
 `bun run build` stages official DeepSeek SDK `0.1.5-rc.2` and its matching runtime, compiles the server into `src-tauri/binaries/harness-server-aarch64-apple-darwin`, then builds
-`src-tauri/target/release/bundle/macos/agentic.harness.app`. Copy it to `/Applications` to install.
+`src-tauri/target/release/bundle/macos/agentic.sidekick.app`. Copy it to `/Applications` to install.
 The build finishes by applying and verifying a local ad-hoc signature after all SDK resources are present. This is local signing, not Developer ID signing or notarization for public distribution.
 
 Other scripts:

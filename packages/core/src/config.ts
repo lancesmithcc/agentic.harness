@@ -13,7 +13,7 @@ import { homedir } from "node:os";
 export function getHarnessHome(): string {
   return process.env.HARNESS_HOME ?? join(homedir(), ".deepharness");
 }
-// Legacy path remains compatible; the product identity is agentic.harness.
+// Legacy path remains compatible; the product identity is agentic.sidekick.
 export const HARNESS_HOME = getHarnessHome();
 
 export const SecretRefSchema = z.string().refine((s) => s.startsWith("keychain://") || s.startsWith("env://"), {

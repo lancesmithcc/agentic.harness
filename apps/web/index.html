@@ -3,18 +3,22 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>agentic.harness</title>
+<title>agentic.sidekick</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230A0908'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23FB923C'/%3E%3C/svg%3E" />
 <link rel="stylesheet" href="/brand.css" />
 <style>
   /* Primary per-chat control: large enough for touch and distinct when enabled. */
-  #selfEvolveToggle{min-height:36px;min-width:36px}
+  /* 🧬 sits beside the theme toggle; it opens a self-evolve chat rooted in the harness source. */
+  .rail-actions{display:flex;align-items:center;gap:6px;flex:none}
+  #selfEvolveToggle{font-size:15px;line-height:1}
   #selfEvolveToggle[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--bg)}
   .self-chat-options-wrap{display:inline-flex;align-items:center;gap:2px}
   #selfChatDetails{color:var(--text-dim);font-size:12px}
-  #selfChatDetails summary{cursor:pointer;display:flex;align-items:center;justify-content:center;min-width:24px;min-height:36px;list-style:none;white-space:nowrap}
+  #selfChatDetails summary{cursor:pointer;display:flex;align-items:center;justify-content:center;min-width:18px;min-height:32px;list-style:none;white-space:nowrap}
   #selfChatDetails summary::-webkit-details-marker{display:none}
-  #selfChatOptions{position:absolute;z-index:30;bottom:calc(100% + 12px);left:0;width:min(440px,calc(100vw - 48px));max-height:55vh;overflow:auto;padding:16px;background:var(--bg);border:1px solid var(--border-strong);border-radius:12px;box-shadow:var(--shadow)}
+  /* floats above the rail (which clips overflow); placed next to the ▾ when opened */
+  #selfChatOptions{position:fixed;z-index:70;width:min(440px,calc(100vw - 48px));max-height:55vh;overflow:auto;padding:16px;background:var(--bg);border:1px solid var(--border-strong);border-radius:12px;box-shadow:var(--shadow)}
+  #selfChatOptions[hidden]{display:none}
   #selfChatOptions .source-path{display:flex;gap:8px;margin-top:12px}
   #selfSourcePath{min-width:0;flex:1;padding:8px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px}
   #selfChatDetails summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
@@ -41,7 +45,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   <aside class="rail" id="mobileDrawer">
     <div class="drag-strip" data-tauri-drag-region></div>
     <div class="brand">
-      <a class="signature signature--compact" id="brandSig" href="#" title="agentic.harness" aria-label="agentic.harness home">
+      <a class="signature signature--compact" id="brandSig" href="#" title="agentic.sidekick" aria-label="agentic.sidekick home">
         <span class="signature-prefix">agentic</span><span class="signature-dot">.</span><span class="signature-domain" id="sigDomain"></span><span class="signature-cursor">|</span>
       </a>
     </div>
@@ -62,9 +66,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     </nav>
     <div class="rail-footer">
       <span class="profile-pill" id="profilePill">home</span>
-      <button class="theme-toggle" id="themeToggle" aria-label="Toggle colour theme" title="Invert the field" type="button">
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4Z" fill="currentColor"/></svg>
-      </button>
+      <div class="rail-actions">
+        <div class="self-chat-options-wrap">
+          <button class="theme-toggle" id="selfEvolveToggle" type="button" aria-label="Start a self-evolve chat" title="Self-evolve: new chat in the harness source" aria-pressed="false">🧬</button>
+          <details id="selfChatDetails"><summary title="Self-evolve options" aria-label="Self-evolve options">▾</summary></details>
+        </div>
+        <button class="theme-toggle" id="themeToggle" aria-label="Toggle colour theme" title="Invert the field" type="button">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4Z" fill="currentColor"/></svg>
+        </button>
+      </div>
     </div>
   </aside>
 
@@ -84,16 +94,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
     <footer class="composer" id="composer">
       <div class="composer-inner">
+        <div class="queue-tray" id="queueTray" hidden></div>
         <div class="attach-tray" id="attachTray" hidden></div>
-        <textarea id="task" rows="1" aria-label="Task for agentic.harness" placeholder="how shall we proceed creator?"></textarea>
+        <textarea id="task" rows="1" aria-label="Task for agentic.sidekick" placeholder="how shall we proceed creator?"></textarea>
         <div class="composer-bar">
           <button class="attach-btn" id="attachBtn" type="button" aria-label="Attach files" title="Attach files — or drop / paste them into the box">
             <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.2 7.6 8 12.8a3.4 3.4 0 0 1-4.8-4.8l5.5-5.5a2.3 2.3 0 0 1 3.2 3.2L6.4 11.2a1.1 1.1 0 0 1-1.6-1.6L9.6 4.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <div class="self-chat-options-wrap">
-          <button class="attach-btn" id="selfEvolveToggle" type="button" aria-label="self evolve" title="self evolve" aria-pressed="false">🧬</button>
-            <details id="selfChatDetails"><summary title="Self-evolve options" aria-label="Self-evolve options">▾</summary><div id="selfChatOptions"></div></details>
-          </div>
           <input type="file" id="fileInput" multiple hidden />
           <button class="modelpick" id="modelPick" type="button" aria-label="Choose model" aria-haspopup="menu" aria-expanded="false" title="Choose the model for this task"><span class="mp-k">AUTO</span><span class="mp-caret">▾</span></button>
           <div class="modelmenu" id="modelMenu" hidden></div>
@@ -103,6 +110,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           <label class="chk astra-only" hidden title="Orchestrator job: marks this call as conducting the fleet (planning/arbitration), which is the only role GPT 6 Astra may fill — and only after its Settings gate is on."><input type="checkbox" id="orchestrator" /> orchestrator job</label>
           <span class="spacer"></span>
           <button class="btn-send" id="send" type="button">Send</button>
+          <button class="btn-steer" id="steer" type="button" hidden title="Stop the current reply now and send this as a course correction — the partial reply is kept in the thread">Steer</button>
+          <button class="btn-queue" id="queue" type="button" hidden title="Run this after the current reply finishes">Queue</button>
           <button class="btn-stop" id="stop" type="button" hidden>Stop generating</button>
         </div>
       </div>
@@ -144,6 +153,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   function get(url) { return fetch(url).then(function (r) { return r.json(); }); }
 
   // ---------- theme ----------
+  // "Show reasoning" also governs folds already on screen: turning it off in the
+  // middle of a conversation must hide the thinking that streamed before it.
+  function applyReasoning() {
+    document.documentElement.dataset.reasoning = S.settings.reasoningOff ? "off" : "on";
+  }
+
   function applyTheme(t, userAction) {
     document.documentElement.dataset.theme = t;
     S.settings.theme = t;
@@ -168,7 +183,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     document.querySelectorAll(".nav-item").forEach(function (n) { n.classList.toggle("active", n.dataset.view === v); });
     $("crumb").textContent = v === "chat" ? "Conversation" : v.charAt(0).toUpperCase() + v.slice(1);
     $("composer").style.display = v === "chat" ? "" : "none";
-    $("selfChatDetails").parentElement.style.display = v === "chat" ? "" : "none";
     renderView();
   }
   document.querySelectorAll(".nav-item").forEach(function (n) {
@@ -188,6 +202,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   };
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeMobileMenu(); });
   function detachActiveTurn() {
+    // A queued follow-up belongs to the conversation being left behind — drop it.
+    if (S.queue.length) { S.queue = []; renderQueue(); }
     if (!S.activeTurn) return;
     S.activeTurn.detached = true;
     S.activeTurn.think.stop();
@@ -262,6 +278,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       chip.appendChild(x);
       tray.appendChild(chip);
     });
+    if (typeof updateComposerButtons === "function") updateComposerButtons();
   }
   function addFiles(list) {
     Array.prototype.forEach.call(list || [], function (f) {
@@ -269,6 +286,51 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       else S.attachments.push({ file: f, name: f.name || "pasted-file", size: f.size });
     });
     renderTray();
+  }
+
+  // ---------- steer / queue ----------
+  // A session runs one turn at a time (the server rejects overlaps). While a turn
+  // streams, extra requests wait in S.queue and drain as follow-up turns in the
+  // same session. "Steer" jumps the line by stopping the live turn first.
+  S.queue = [];
+  function renderQueue() {
+    var tray = $("queueTray"); tray.textContent = "";
+    tray.hidden = !S.queue.length;
+    S.queue.forEach(function (q, i) {
+      var chip = el("span", "queue-chip" + (q.steer ? " steer" : ""));
+      chip.appendChild(el("span", "queue-tag", q.steer ? "steer" : "queued"));
+      chip.appendChild(el("span", "queue-text", q.task || (q.files.length ? q.files.length + " file(s)" : "")));
+      var x = el("button", "attach-x", "✕"); x.type = "button"; x.title = "Remove from queue"; x.setAttribute("aria-label", "Remove queued request");
+      x.onclick = function () { S.queue.splice(i, 1); renderQueue(); };
+      chip.appendChild(x);
+      tray.appendChild(chip);
+    });
+  }
+  function composerPayload() {
+    return { task: $("task").value.trim(), files: S.attachments.filter(function (a) { return a.file; }) };
+  }
+  function clearComposer() {
+    $("task").value = ""; S.attachments = []; renderTray(); updateComposerButtons();
+  }
+  function enqueueTurn(front) {
+    var p = composerPayload();
+    if (!p.task && !p.files.length) return false;
+    var item = { task: p.task, files: p.files, steer: !!front };
+    if (front) S.queue.unshift(item); else S.queue.push(item);
+    clearComposer(); renderQueue();
+    return true;
+  }
+  function steerTurn() {
+    if (!S.busy) return;
+    // Front-load this request, then stop the live turn. Its finalizer drains the
+    // queue, so the steer message runs next — the server never sees an overlap.
+    if (!enqueueTurn(true)) return;
+    stopActiveTurn();
+  }
+  function drainQueue() {
+    if (S.busy || !S.queue.length) return;
+    var next = S.queue.shift(); renderQueue();
+    startTurn({ task: next.task, files: next.files });
   }
   function refreshChatContext() {
     $("wsName").textContent = wsLabel(S.workspace || S.defaultWorkspace);
@@ -317,10 +379,53 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     return r;
   }
   $("attachBtn").onclick = function () { $("fileInput").click(); };
-  $("selfEvolveToggle").onclick = function () { if (!S.busy) saveSessionContext({ selfEvolve: !S.selfEvolve }).catch(function () {}); };
+  // 🧬 opens a fresh chat rooted in the harness source with self-evolve on. The chat
+  // is created by its first message, so an unused one never clutters History.
+  $("selfEvolveToggle").onclick = function () {
+    if (S.busy || S.contextSaving) return;
+    get("/api/self" + qs()).then(function (d) {
+      setView("chat");
+      if (!d || d.error || !d.sourceRoot) {
+        sysline("⚠ No harness source folder found — set it under 🧬 ▾.", "error");
+        return;
+      }
+      if (S.selfEvolve && S.workspace === d.sourceRoot) { $("task").focus(); return; } // already in one
+      $("newSession").click();
+      S.workspace = d.sourceRoot; S.selfEvolve = true; refreshChatContext();
+      sysline("🧬 Self-evolve chat · working folder " + shortPath(d.sourceRoot), "route");
+      $("task").focus();
+    }).catch(function () { sysline("⚠ Could not reach the harness.", "error"); });
+  };
+  // The options panel lives on <body> so the rail's overflow can't clip it.
+  (function () {
+    var o = el("div"); o.id = "selfChatOptions"; o.hidden = true; document.body.appendChild(o);
+    // content arrives async; keep the panel placed as it grows
+    if (window.ResizeObserver) new ResizeObserver(function () { if (!o.hidden) placeSelfOptions(); }).observe(o);
+    window.addEventListener("resize", function () { if (!o.hidden) placeSelfOptions(); });
+  })();
+  /** Open above the ▾ when there's room (sidebar footer), otherwise below (narrow layout, rail on top). */
+  function placeSelfOptions() {
+    var host = $("selfChatOptions"), r = $("selfChatDetails").getBoundingClientRect();
+    var gap = 10, edge = 12;
+    host.style.left = Math.max(edge, Math.min(r.left - 200, window.innerWidth - host.offsetWidth - edge)) + "px";
+    var above = r.top - gap - edge, below = window.innerHeight - r.bottom - gap - edge;
+    var wanted = Math.min(host.scrollHeight, window.innerHeight * 0.55);
+    if (above >= wanted || above >= below) {
+      host.style.top = ""; host.style.bottom = (window.innerHeight - r.top + gap) + "px";
+      host.style.maxHeight = Math.max(160, above) + "px";
+    } else {
+      host.style.bottom = ""; host.style.top = (r.bottom + gap) + "px";
+      host.style.maxHeight = Math.max(160, below) + "px";
+    }
+  }
   $("selfChatDetails").addEventListener("toggle", function () {
-    if (this.open) renderSelfChatOptions();
-    else $("selfChatOptions").textContent = "";
+    var host = $("selfChatOptions");
+    if (this.open) { host.hidden = false; renderSelfChatOptions(); placeSelfOptions(); }
+    else { host.hidden = true; host.textContent = ""; }
+  });
+  document.addEventListener("click", function (e) {
+    var d = $("selfChatDetails");
+    if (d.open && !d.contains(e.target) && !$("selfChatOptions").contains(e.target)) d.open = false;
   });
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && $("selfChatDetails").open) { $("selfChatDetails").open = false; $("selfChatDetails").querySelector("summary").focus(); }
@@ -648,6 +753,34 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       if (typeof hash === "string" && hash) { note.appendChild(document.createTextNode(" · ")); note.appendChild(localCheckpoint(hash, repo, null)); }
     }
   }
+  // ---------- restart the harness so edited source takes effect ----------
+  function waitForHarness(tries, onFail) {
+    if (tries > 80) { onFail && onFail(); return; }
+    setTimeout(function () {
+      fetch("/api/settings", { cache: "no-store" })
+        .then(function (r) { if (r.ok) location.reload(); else waitForHarness(tries + 1, onFail); })
+        .catch(function () { waitForHarness(tries + 1, onFail); });
+    }, 700);
+  }
+  function restartHarness(btn, note) {
+    if (!confirm("Restart the harness now? Any reply still streaming will stop.")) return;
+    var label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Restarting…";
+    var failed = function (message) {
+      btn.disabled = false;
+      btn.textContent = label;
+      if (note) { note.className = "self-result auth-err"; note.textContent = message; }
+    };
+    jsonReq("POST", "/api/self/restart" + qs(), {})
+      .then(function (d) {
+        if (d && d.error) { failed(d.error); return; }
+        waitForHarness(0, function () { failed("The harness did not come back — check the log."); });
+      })
+      // the server may exit before the reply lands; that still means it is restarting
+      .catch(function () { waitForHarness(0, function () { failed("The harness did not come back — check the log."); }); });
+  }
+
   function selfChangeCard(sid, c) {
     var files = c.files || [];
     var box = el("div", "self-change");
@@ -673,7 +806,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     var view = el("button", "ghost", "View diff"); view.type = "button";
     var revert = el("button", "rowbtn", "Revert"); revert.type = "button";
     var result = el("span", "self-result");
-    acts.appendChild(view); acts.appendChild(revert); acts.appendChild(result);
+    var restart = el("button", "ghost", "Restart harness"); restart.type = "button";
+    restart.title = "Apply server-side changes now";
+    restart.onclick = function () { restartHarness(restart, result); };
+    acts.appendChild(view); acts.appendChild(restart); acts.appendChild(revert); acts.appendChild(result);
     box.appendChild(acts);
     var pre = el("pre", "self-diff"); pre.hidden = true;
     box.appendChild(pre);
@@ -784,16 +920,19 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     }).then(function () {
       turn.finished = true; think.stop();
       if (!turn.detached && !turn.failed && !tw.text() && !turn.acc) tw.set("(no output)");
-      if (S.activeTurn === turn) { S.activeTurn = null; S.abort = null; setBusy(false); }
+      if (S.activeTurn === turn) { S.activeTurn = null; S.abort = null; setBusy(false); drainQueue(); }
       loadUsageChips(); loadChatList(turn.profile);
     });
   }
   function send() {
-    startTurn({ task: $("task").value.trim(), files: S.attachments.filter(function (a) { return a.file; }) });
+    if (S.busy || S.contextSaving) { enqueueTurn(false); return; }
+    var p = composerPayload();
+    startTurn({ task: p.task, files: p.files });
   }
   // Reasoning lives in its own collapsible block above the answer, and only
   // exists when Settings → Show reasoning is on.
   function reasoningBox(bubble, body) {
+    if (S.settings.reasoningOff) return null;
     var box = bubble.querySelector(".reasoning");
     if (!box) {
       box = el("details", "reasoning"); box.open = true;
@@ -876,7 +1015,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       if (rbox && !rbox.dataset.folded) { rbox.open = false; rbox.dataset.folded = "1"; } // answer started: fold the thinking away
     } else if (evt.t === "thinking") {
       if (S.settings.reasoningOff) return;
-      var rb = reasoningBox(bubble, body).querySelector(".reasoning-body");
+      var box = reasoningBox(bubble, body);
+      if (!box) return;
+      var rb = box.querySelector(".reasoning-body");
       rb.textContent += evt.text; rb.scrollTop = rb.scrollHeight;
     }
     else if (evt.t === "tool") { toolActivity(bubble, evt); }
@@ -900,8 +1041,17 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   function setBusy(b) {
     S.busy = b; $("app").dataset.busy = b ? "1" : "0";
     $("send").hidden = b; $("stop").hidden = !b;
+    $("steer").hidden = !b; $("queue").hidden = !b;
     $("wsBtn").disabled = b || S.contextSaving;
     $("selfEvolveToggle").disabled = b || S.contextSaving;
+    updateComposerButtons();
+  }
+  // Steer and Queue only act on real input; grey them out when the box is empty.
+  function updateComposerButtons() {
+    var p = composerPayload();
+    var empty = !p.task && !p.files.length;
+    $("steer").disabled = empty;
+    $("queue").disabled = empty;
   }
   // ---------- manual model picker ----------
   function renderModelPick() {
@@ -950,17 +1100,21 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   };
   document.addEventListener("click", function (e) { if (!e.target.closest(".modelpick") && !e.target.closest(".modelmenu")) { $("modelMenu").hidden = true; $("modelPick").setAttribute("aria-expanded", "false"); } });
   renderModelPick();
-  $("send").onclick = send;
-  $("stop").onclick = function () {
+  function stopActiveTurn() {
     var turn = S.activeTurn;
     if (!turn) return;
     turn.cancelled = true;
     if (turn.sessionId) jsonReq("POST", "/api/turn/cancel" + (turn.profile ? "?profile=" + encodeURIComponent(turn.profile) : ""), { sessionId: turn.sessionId }).catch(function () {});
     turn.controller.abort();
-  };
+  }
+  $("send").onclick = send;
+  $("stop").onclick = stopActiveTurn;
+  $("steer").onclick = steerTurn;
+  $("queue").onclick = function () { enqueueTurn(false); };
   $("task").addEventListener("keydown", function (e) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   });
+  $("task").addEventListener("input", updateComposerButtons);
 
   // ---------- panels ----------
   function panel(title, lede) {
@@ -1552,6 +1706,87 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     return c;
   }
 
+  // ---------- provider API keys (bring your own) ----------
+  function providerKeysSection() {
+    var c = el("div", "card access");
+    c.appendChild(el("h3", null, "Provider API keys"));
+    c.appendChild(el("p", null, "Your own key for each API provider, stored write-only in this profile's macOS Keychain. Nothing is compiled into the app, and a saved key is never shown again. Claude and ChatGPT use their own logins above."));
+    var list = el("div", "shared-list");
+    var note = el("p", "access-note");
+    var inputs = {};
+
+    var badge = function (p) {
+      if (p.source === "environment") return ["environment", "ok"];
+      if (p.source === "keychain") return ["keychain", "ok"];
+      if (p.source === "config") return ["config file", "ok"];
+      return ["not set", ""];
+    };
+
+    var paint = function (providers) {
+      list.textContent = "";
+      providers.forEach(function (p) {
+        var row = el("div", "keyrow");
+        var head = el("div", "keyrow-head");
+        head.appendChild(el("strong", null, p.label));
+        var b = badge(p);
+        head.appendChild(el("span", "auth-state" + (b[1] ? " " + b[1] : ""), b[0]));
+        head.appendChild(el("span", "tag", p.envVar));
+        row.appendChild(head);
+
+        var form = el("div", "shared-add");
+        var input = el("input");
+        input.type = "password";
+        input.autocomplete = "new-password";
+        input.spellcheck = false;
+        input.placeholder = p.stored ? "Replace stored key" : "Paste " + p.label + " API key";
+        inputs[p.id] = input;
+        var save = el("button", "ghost", "Save");
+        save.type = "button";
+        save.onclick = function () { saveKey(p, input); };
+        input.onkeydown = function (e) { if (e.key === "Enter") { e.preventDefault(); saveKey(p, input); } };
+        form.appendChild(input); form.appendChild(save);
+        if (p.stored) {
+          var rm = el("button", "ghost", "Remove");
+          rm.type = "button";
+          rm.onclick = function () { removeKey(p); };
+          form.appendChild(rm);
+        }
+        row.appendChild(form);
+        if (p.overriddenByEnv) row.appendChild(el("p", "access-note warn", p.envVar + " is set in the environment that launched the app, so it is used instead of the stored key."));
+        list.appendChild(row);
+      });
+    };
+
+    var apply = function (d, message) {
+      if (!d || d.error) { note.textContent = (d && d.error) || "could not reach the key store"; note.classList.add("warn"); return; }
+      note.classList.remove("warn");
+      note.textContent = message || "";
+      paint(d.providers || []);
+    };
+
+    var saveKey = function (p, input) {
+      var key = input.value.trim();
+      if (!key) return;
+      note.classList.remove("warn"); note.textContent = "saving…";
+      jsonReq("PUT", "/api/providers/keys", { provider: p.id, key: key }).then(function (d) {
+        input.value = "";
+        apply(d, d && !d.error ? p.label + " key saved to Keychain." : null);
+      });
+    };
+
+    var removeKey = function (p) {
+      if (!window.confirm("Remove the stored " + p.label + " key from this profile's Keychain?")) return;
+      note.classList.remove("warn"); note.textContent = "removing…";
+      jsonReq("DELETE", "/api/providers/keys?provider=" + encodeURIComponent(p.id) + (S.profile ? "&profile=" + encodeURIComponent(S.profile) : "")).then(function (d) {
+        apply(d, d && !d.error ? p.label + " key removed." : null);
+      });
+    };
+
+    c.appendChild(list); c.appendChild(note);
+    get("/api/providers/keys" + qs()).then(function (d) { apply(d); }).catch(function () { apply({ error: "could not reach the key store" }); });
+    return c;
+  }
+
   // ---------- agent file access ----------
   var ACCESS_MODES = [
     { id: "read-only", label: "Read-only", note: "Agents can read files but can't change anything." },
@@ -1581,6 +1816,60 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     return c;
   }
 
+  // ---------- shared resources (folders/files outside the working folder) ----------
+  function sharedSection() {
+    var c = el("div", "card access");
+    c.appendChild(el("h3", null, "Shared resources"));
+    c.appendChild(el("p", null, "Folders and files outside the working folder that every chat may also reach — a universal .env, a design library, a reference repo. A shared file grants the folder that holds it, because agents are granted folders."));
+    var list = el("div", "shared-list");
+    var note = el("p", "access-note");
+    var paint = function () {
+      list.textContent = "";
+      var paths = S.settings.sharedPaths || [];
+      if (!paths.length) { list.appendChild(el("div", "access-note", "Nothing shared. Agents stay inside the working folder.")); return; }
+      paths.forEach(function (path, i) {
+        var row = el("div", "shared-row");
+        var isFile = /\.[a-z0-9]{1,12}$/i.test(path);
+        row.appendChild(el("span", "tool-cmd", shortPath(path)));
+        if (isFile) row.appendChild(el("span", "tag", "grants its folder"));
+        var rm = el("button", "ghost", "Remove"); rm.type = "button";
+        rm.onclick = function () {
+          var next = (S.settings.sharedPaths || []).slice(); next.splice(i, 1);
+          save(next, "removed");
+        };
+        row.appendChild(rm);
+        list.appendChild(row);
+      });
+    };
+    var save = function (next, verb) {
+      note.classList.remove("warn"); note.textContent = "saving…";
+      jsonReq("PUT", "/api/settings", { sharedPaths: next }).then(function (r) {
+        if (!r || r.error) { note.textContent = (r && r.error) || "could not save"; note.classList.add("warn"); return; }
+        S.settings = r; note.textContent = verb === "removed" ? "Resource removed." : "Resource shared with every chat."; paint();
+      });
+    };
+    var row = el("div", "shared-add");
+    var input = el("input");
+    input.type = "text";
+    input.placeholder = "/Users/you/shared-resources or /Users/you/.env";
+    input.spellcheck = false;
+    var add = el("button", "ghost", "Share");
+    add.type = "button";
+    add.onclick = function () {
+      var value = input.value.trim();
+      if (!value) return;
+      var next = (S.settings.sharedPaths || []).slice();
+      if (next.indexOf(value) === -1) next.push(value);
+      input.value = "";
+      save(next, "added");
+    };
+    input.onkeydown = function (e) { if (e.key === "Enter") { e.preventDefault(); add.onclick(); } };
+    row.appendChild(input); row.appendChild(add);
+    c.appendChild(list); c.appendChild(row); c.appendChild(note);
+    paint();
+    return c;
+  }
+
   // ---------- self-evolve ----------
   function renderSelfChatOptions() {
     var host = $("selfChatOptions"); host.textContent = "";
@@ -1599,6 +1888,14 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       status.appendChild(el("span", "auth-state" + (evo.sync === "synced" ? " ok" : ""), syncText));
       if (evo.error) status.appendChild(el("span", "access-note warn", evo.error));
       if (d.access === "read-only") status.appendChild(el("p", "access-note", "Agent file access is read-only. Change it in Settings before editing."));
+      // edited server-side source only takes effect on a fresh process
+      var restartRow = el("div", "routine-actions");
+      var restartBtn = el("button", "ghost", "Restart harness"); restartBtn.type = "button";
+      restartBtn.title = "Restart the harness so edited source takes effect";
+      var restartNote = el("span", "self-result");
+      restartBtn.onclick = function () { restartHarness(restartBtn, restartNote); };
+      restartRow.appendChild(restartBtn); restartRow.appendChild(restartNote);
+      status.appendChild(restartRow);
       var label = el("label", null, "Harness source checkout"); label.htmlFor = "selfSourcePath";
       status.appendChild(label);
       var sourceRow = el("div", "source-path"), sourceInput = el("input");
@@ -1621,10 +1918,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     get("/api/self" + query).then(paint).catch(function () { paint({ error: "Self-evolve options are unavailable." }); });
   }
   function settingsPage(v) {
-    var p = panel("Settings", "Accounts, soul.md, agent access, theme, the Astra gate, and the model roster with each mind's delegate role.");
+    var p = panel("Settings", "Accounts, provider keys, soul.md, agent access, shared resources, theme, the Astra gate, and the model roster with each mind's delegate role.");
     p.appendChild(accountsSection());
     p.appendChild(soulSection());
+    p.appendChild(providerKeysSection());
     p.appendChild(accessSection());
+    p.appendChild(sharedSection());
 
     var themeCard = card();
     var row = el("div", "row");
@@ -1662,8 +1961,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     reasonCard.appendChild(row);
     reasonCard.appendChild(el("div", null, "On shows the thinking models stream before answering, in a separate fold above the answer. Off hides it completely — the models still reason."));
     cb.onchange = function () {
+      S.settings.reasoningOff = !cb.checked;
+      applyReasoning();
       fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ reasoningOff: !cb.checked }) })
-        .then(function (r) { return r.json(); }).then(function (v) { S.settings = v; });
+        .then(function (r) { return r.json(); }).then(function (v) { S.settings = v; applyReasoning(); });
     };
     p.appendChild(reasonCard);
 
@@ -1973,6 +2274,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       var incomingSettings = d.settings || {};
       S.settings = S.themePinned || themeSeq !== S.themeSeq ? { ...incomingSettings, ...S.settings } : { ...S.settings, ...incomingSettings };
       if (!S.themePinned && themeSeq === S.themeSeq && document.documentElement.dataset.theme !== S.settings.theme) applyTheme(S.settings.theme);
+      applyReasoning();
       renderModelPick();
       // Ignore context-bearing status replies after navigation. A blank chat
       // receives only its profile default, never a previous chat's folder.
@@ -2025,23 +2327,25 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     }).catch(function (e) { feed.appendChild(el("div", "sys error", "status fetch failed: " + e.message)); });
   }
 
-  // ---------- signature: hover types harness in ----------
+  // ---------- signature: the logo reads "agentic."; hover types "sidekick" in ----------
   (function () {
     var sig = $("brandSig"), domain = $("sigDomain");
-    var full = "harness", n = full.length, timer = null;
+    var full = "sidekick", n = 0, timer = null;
     function render() { domain.textContent = full.slice(0, n); }
-    function typeIn() {
-      sig.classList.add("is-hovered");
+    function step(forward) {
       clearInterval(timer);
-      timer = setInterval(function () { if (n < full.length) { n++; render(); } else clearInterval(timer); }, 45);
+      timer = setInterval(function () {
+        if (forward ? n < full.length : n > 0) { n += forward ? 1 : -1; render(); }
+        else clearInterval(timer);
+      }, forward ? 45 : 28);
     }
-    function typeOut() {
-      sig.classList.remove("is-hovered");
-      clearInterval(timer);
-      render();
-    }
+    function typeIn() { sig.classList.add("is-hovered"); step(true); }
+    function typeOut() { sig.classList.remove("is-hovered"); step(false); }
     sig.addEventListener("mouseenter", typeIn);
     sig.addEventListener("mouseleave", typeOut);
+    // Keyboard reach: the name is decorative, so focus reveals it the same way.
+    sig.addEventListener("focus", typeIn);
+    sig.addEventListener("blur", typeOut);
     sig.addEventListener("click", function (e) { e.preventDefault(); });
     render();
   })();
@@ -2065,6 +2369,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     S.meta = d; S.verbs = (d.verbs || []).length ? d.verbs : ["Crystallizing"];
     S.settings = d.settings || S.settings;
     applyTheme(S.settings.theme);
+    applyReasoning();
   }).catch(function () { S.verbs = ["Crystallizing"]; });
   window.__ls = loadStatus; window.__S = S;
   var initialBoot = ++S.bootSeq;

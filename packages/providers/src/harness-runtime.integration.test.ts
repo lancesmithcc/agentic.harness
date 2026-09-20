@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import type { HarnessEvent } from "@harness/core";
 import { generateHarness } from "./harness-runtime.ts";
 
-const packagedNode = "/Applications/agentic.harness.app/Contents/Resources/dsh-runtime/node/bin/node";
+const packagedNode = "/Applications/agentic.sidekick.app/Contents/Resources/dsh-runtime/node/bin/node";
 const sourceNode = join(process.cwd(), "apps/desktop/.runtime/node/bin/node");
 const sourceBridge = join(process.cwd(), "packages/providers/runtime/deepseek-bridge.mjs");
 const node = existsSync(packagedNode) ? packagedNode : existsSync(sourceNode) ? sourceNode : undefined;

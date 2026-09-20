@@ -39,7 +39,7 @@ function statePath(root: string, name: string) { return join(stateDir(root), nam
 function branchRef() { return `refs/heads/${EVOLUTION_BRANCH}`; }
 function maybeRef(root: string, ref: string): string | null { try { return run(root, ["rev-parse", "--verify", ref]); } catch { return null; } }
 function treeOf(root: string, commit: string): string { return run(root, ["rev-parse", `${commit}^{tree}`]); }
-function defaultEnv() { return { GIT_AUTHOR_NAME: "agentic.harness", GIT_AUTHOR_EMAIL: "agentic@localhost", GIT_COMMITTER_NAME: "agentic.harness", GIT_COMMITTER_EMAIL: "agentic@localhost" }; }
+function defaultEnv() { return { GIT_AUTHOR_NAME: "agentic.sidekick", GIT_AUTHOR_EMAIL: "agentic@localhost", GIT_COMMITTER_NAME: "agentic.sidekick", GIT_COMMITTER_EMAIL: "agentic@localhost" }; }
 
 function acquire(root: string, name = "evolution.lock"): Lock {
   const dir = statePath(root, name);

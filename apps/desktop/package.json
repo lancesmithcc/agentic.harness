@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "agentic.harness — native macOS app for the agentic.harness web UI (Tauri).",
+  "description": "agentic.sidekick — native macOS app for the agentic.sidekick web UI (Tauri).",
   "scripts": {
     "build:runtime": "node ../../scripts/prepare-dsh-runtime.mjs",
     "build:server": "bun build --compile --target=bun-darwin-arm64 ../web/src/server.ts --outfile src-tauri/binaries/harness-server-aarch64-apple-darwin",

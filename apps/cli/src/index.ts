@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * agentic.harness CLI — one agent environment, many minds.
+ * agentic.sidekick CLI — one agent environment, many minds.
  */
 import { Command, Option } from "commander";
 import {
@@ -12,7 +12,7 @@ import {
   SecretStore,
 } from "@harness/core";
 import { buildFleet, fleetModels } from "@harness/providers";
-import { findDelegationDoc, parseDelegation, route } from "@harness/router";
+import { findDelegationDoc, jevDecider, parseDelegation, route, routeAsync } from "@harness/router";
 import { scanSkills } from "@harness/skills";
 import { scanTools } from "@harness/tools";
 import { buildSelfKnowledge, compileContext, findSourceRoot } from "@harness/context";
@@ -115,7 +115,7 @@ program
 
     const history = session.messages().slice(0, -1);
     const pin = opts.auto ? undefined : opts.model;
-    const decision0 = route({ task, models: ctx.models, health: ctx.health, delegation: ctx.delegation, escalate: opts.escalate, pinnedModel: pin });
+    const decision0 = await routeAsync({ task, models: ctx.models, health: ctx.health, delegation: ctx.delegation, escalate: opts.escalate, pinnedModel: pin }, jevDecider(profile));
     const target = ctx.models.find((m) => m.id === decision0.selected);
     const messages = target
       ? compileContext(task, target, {
@@ -223,7 +223,7 @@ program
     const profile = currentProfile(opts);
     const task = taskParts.join(" ");
     const ctx = await buildContext(profile);
-    const d = route({ task, models: ctx.models, health: ctx.health, delegation: ctx.delegation, pinnedModel: opts.model });
+    const d = await routeAsync({ task, models: ctx.models, health: ctx.health, delegation: ctx.delegation, pinnedModel: opts.model }, jevDecider(profile));
     console.log(`Task: ${task}`);
     console.log(`Category: ${d.category} (via ${d.classifiedBy}, confidence ${d.confidence.toFixed(2)})`);
     console.log(`\nSelected: ${d.selected}\n`);

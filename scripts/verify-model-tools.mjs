@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
-const app = join(repo, 'apps/desktop/src-tauri/target/release/bundle/macos/agentic.harness.app/Contents');
+const app = join(repo, 'apps/desktop/src-tauri/target/release/bundle/macos/agentic.sidekick.app/Contents');
 const resources = join(app, 'Resources');
 const node = join(resources, 'dsh-runtime/node/bin/node');
 // Reserve an unused port before creating fixtures; refuse occupied explicit ports.
@@ -92,7 +92,7 @@ try {
     const checked = {
       completed: Boolean(done),
       file: existsSync(join(workspace, output)) && readFileSync(join(workspace, output), 'utf8').trim() === marker,
-      identity: Boolean(done?.text.includes('agentic.harness')),
+      identity: Boolean(done?.text.includes('agentic.sidekick')),
       reply: Boolean(done?.text.includes(marker) && done?.text.includes(mcpMarker)),
       mcp: transcript.events.some(event => event.kind === 'tool-result' && event.content.includes(mcpMarker)),
       persisted: transcript.events.some(event => event.kind === 'tool-call') && transcript.events.some(event => event.kind === 'tool-result'),

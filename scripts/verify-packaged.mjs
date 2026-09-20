@@ -7,7 +7,7 @@ import { performance } from 'node:perf_hooks';
 import { chromium } from 'playwright';
 import { fileURLToPath } from 'node:url';
 const repo = fileURLToPath(new URL('../', import.meta.url));
-const app=join(repo,'apps/desktop/src-tauri/target/release/bundle/macos/agentic.harness.app/Contents');
+const app=join(repo,'apps/desktop/src-tauri/target/release/bundle/macos/agentic.sidekick.app/Contents');
 const resources=join(app,'Resources');
 const root=mkdtempSync(join(tmpdir(),'agentic-packaged-'));
 const home=join(root,'data'), workspace=join(root,'workspace'), bin=join(root,'bin');
@@ -36,7 +36,7 @@ let browser;
 const assert=(value,label)=>{if(!value)throw Error(label);};
 try{
  for(let i=0;i<200;i++){try{if((await fetch(base+'/api/health')).ok)break;}catch{} await new Promise(r=>setTimeout(r,50));}
- assert((await fetch(base+'/api/health').then(r=>r.json())).name==='agentic.harness','health identity');
+ assert((await fetch(base+'/api/health').then(r=>r.json())).name==='agentic.sidekick','health identity');
  browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1440,height:900}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto(base,{waitUntil:'networkidle'});
  const started=performance.now();const events=[];
@@ -44,7 +44,7 @@ try{
  const reader=reply.body.getReader(),decoder=new TextDecoder();let pending='';
  for(;;){const next=await reader.read();if(next.done)break;pending+=decoder.decode(next.value,{stream:true});const chunks=pending.split('\n\n');pending=chunks.pop();for(const part of chunks){if(part.startsWith('data:'))events.push({ms:Math.round(performance.now()-started),...JSON.parse(part.slice(5))});}}
  const id=events.find(e=>e.t==='accepted')?.session, done=events.find(e=>e.t==='done');
- assert(done?.text.includes('agentic.harness'),'response application identity');assert(done.text.includes('DURABLE-HARNESS-9472'),'real file read marker');assert(events.some(e=>e.t==='tool'),'live tool activity');assert(done.text.includes('MCP-READY-6738'),'real MCP result');
+ assert(done?.text.includes('agentic.sidekick'),'response application identity');assert(done.text.includes('DURABLE-HARNESS-9472'),'real file read marker');assert(events.some(e=>e.t==='tool'),'live tool activity');assert(done.text.includes('MCP-READY-6738'),'real MCP result');
  const transcript=await fetch(base+`/api/session?profile=home&id=${id}`).then(r=>r.json());
  assert(transcript.events.some(e=>e.kind==='tool-call'),'durable tool log');assert(transcript.events.filter(e=>e.kind==='assistant-text').length===1,'one committed assistant reply');
  await page.reload({waitUntil:'networkidle'});await page.waitForFunction(()=>document.querySelector('#chatList')?.textContent.includes('Use your file reading tool'));await page.locator('#chatList').getByText(/Use your file reading tool/).first().click();await page.waitForFunction(()=>document.querySelector('#view')?.textContent.includes('DURABLE-HARNESS-9472'));

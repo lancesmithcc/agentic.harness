@@ -13,7 +13,7 @@ import type {
   RoutingDecision,
   TurnOutcome,
 } from "@harness/core";
-import { route, resolveModelRef, taskRequiresTools } from "@harness/router";
+import { jevDecider, route, resolveModelRef, routeAsync, taskRequiresTools } from "@harness/router";
 import type { DelegationDoc } from "@harness/router";
 import type { SessionStore } from "@harness/sessions";
 import { recordUsage } from "@harness/sessions";
@@ -75,7 +75,7 @@ export async function askRouted(
   const priorToolWork = ctx.session.all().some((event) => event.kind === "tool-call" || event.kind === "tool-result");
   const inferredTools = opts.requiresTools ?? (taskRequiresTools(task) || priorToolWork);
   const useTools = opts.request?.tools ?? inferredTools;
-  const decision = route({
+  const decision = await routeAsync({
     task,
     models: ctx.models,
     health: ctx.health,
@@ -83,7 +83,7 @@ export async function askRouted(
     pinnedModel: opts.pinnedModel,
     escalate: opts.escalate,
     requiresTools: useTools,
-  });
+  }, jevDecider(opts.request?.profile ?? ctx.profile));
   ctx.session.append({ v: 1, ts: new Date().toISOString(), kind: "routing", decision });
   if (decision.selected === "none") throw new Error(decision.reason.slice(-2).join("; ") || "no available model can handle this task");
 
@@ -101,6 +101,9 @@ export async function askRouted(
     const textChunks: string[] = [];
     let completedText: string | undefined;
     let fatalCause: string | null = null;
+    // A provider error that is not fallback-worthy (a 402, a malformed request)
+    // used to vanish, leaving the turn looking like an unexplained empty stream.
+    let lastProviderError: string | null = null;
     let sawDone = false;
     let sawTool = false;
     let cancelled = false;
@@ -151,6 +154,9 @@ export async function askRouted(
             break;
         }
         opts.onEvent?.(evt);
+        if (evt.type === "error" && evt.error.code !== "aborted") {
+          lastProviderError = `${evt.error.message}`.slice(0, 200);
+        }
         const cause = fallbackWorthy(evt);
         if (evt.type === "error" && evt.error.code === "aborted") {
           cancelled = true;
@@ -221,12 +227,14 @@ export async function askRouted(
       persistOutcome(outcome, error);
       return { decision, text, providerUsed: providerId, modelUsed: modelId, fellBack, usage, outcome, error };
     }
-    lastError = `${modelId} produced no output`;
-    const next = chain[chain.indexOf(modelId) + 1];
-    if (next) {
-      fellBack.push({ from: modelId, to: next, cause: "empty output" });
-      continue;
-    }
+    // Report why the stream was empty when the provider said why, and honour
+    // noFallback here exactly as the error path above does.
+    const emptyCause = lastProviderError ?? "empty output";
+    lastError = lastProviderError ? `${modelId}: ${lastProviderError}` : `${modelId} produced no output`;
+    persistOutcome("failed", lastError);
+    const next = opts.noFallback ? undefined : chain[chain.indexOf(modelId) + 1];
+    if (!next) break;
+    fellBack.push({ from: modelId, to: next, cause: emptyCause });
   }
   throw new Error(lastError);
 }

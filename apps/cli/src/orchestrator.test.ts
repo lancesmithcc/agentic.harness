@@ -94,6 +94,30 @@ describe("askRouted stream recovery", () => {
     expect(result.outcome).toBe("completed");
   });
 
+  test("reports why a stream was empty instead of calling it empty output", async () => {
+    // A 402 is not fallback-worthy, so its message used to vanish and the turn
+    // looked like an unexplained empty response.
+    const balance = Object.assign(new Error("402 insufficient balance (1008)"), { code: "provider-error" as const });
+    const { ctx } = context([{ type: "error", fatal: false, error: balance }], [{ type: "done", text: "fallback" }]);
+    const result = await askRouted(ctx, "x", [{ role: "user", content: "x" }], { pinnedModel: "one/a" });
+    expect(result.text).toBe("fallback");
+    expect(result.fellBack).toHaveLength(1);
+    expect(result.fellBack[0]!.cause).toContain("insufficient balance");
+  });
+
+  test("noFallback stops at the selected model and surfaces its error", async () => {
+    const balance = Object.assign(new Error("402 insufficient balance (1008)"), { code: "provider-error" as const });
+    const { ctx } = context([{ type: "error", fatal: false, error: balance }], [{ type: "done", text: "must not run" }]);
+    await expect(
+      askRouted(ctx, "x", [{ role: "user", content: "x" }], { pinnedModel: "one/a", noFallback: true }),
+    ).rejects.toThrow("insufficient balance");
+  });
+
+  test("an exhausted chain never silently runs the next model without recording the hop", async () => {
+    const { ctx } = context([{ type: "done", text: "" }], [{ type: "done", text: "" }]);
+    await expect(askRouted(ctx, "x", [{ role: "user", content: "x" }], { pinnedModel: "one/a" })).rejects.toThrow("produced no output");
+  });
+
   test("accumulates usage emitted by multiple agent steps", async () => {
     const { ctx } = context([
       { type: "usage", usage: { inputTokens: 2, outputTokens: 3, costUsd: 0.1 } },

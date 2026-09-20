@@ -12,7 +12,7 @@ export class OpenRouterProvider extends OpenAICompatProvider {
       defaultCapabilities,
       extraHeaders: {
         "HTTP-Referer": "https://github.com/lancesmithcc/agentic.harness",
-        "X-Title": "agentic.harness",
+        "X-Title": "agentic.sidekick",
       },
     });
   }

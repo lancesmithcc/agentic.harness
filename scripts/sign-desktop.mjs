@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 if (process.platform !== 'darwin') throw new Error('Desktop signing requires macOS');
-const app = fileURLToPath(new URL('../apps/desktop/src-tauri/target/release/bundle/macos/agentic.harness.app', import.meta.url));
+const app = fileURLToPath(new URL('../apps/desktop/src-tauri/target/release/bundle/macos/agentic.sidekick.app', import.meta.url));
 for (const args of [
   ['--force', '--deep', '--sign', '-', '--preserve-metadata=entitlements', app],
   ['--verify', '--deep', '--strict', app],

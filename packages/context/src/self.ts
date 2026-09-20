@@ -1,5 +1,5 @@
 /**
- * Self-knowledge: a compact description of agentic.harness itself — what it is, what it can do,
+ * Self-knowledge: a compact description of agentic.sidekick itself — what it is, what it can do,
  * where its source lives and how that source is laid out — added to every session so the
  * agent can explain itself and, when Settings → Self-evolve is on, change its own code.
  */
@@ -21,7 +21,7 @@ export interface SelfState {
 }
 
 /**
- * True only for an explicit request to modify agentic.harness itself. The web
+ * True only for an explicit request to modify agentic.sidekick itself. The web
  * server uses this to make the source tree the native agent workspace while
  * preserving the selected access mode; ordinary project work stays in its
  * configured workspace.
@@ -39,21 +39,24 @@ export function selfEvolutionIntent(task: string): boolean {
   const directRequest = new RegExp(`^(?:can|could|would|will)\\s+(?:you|we)\\s+(?:please\\s+)?${action}\\b`).test(text);
   if (!directRequest && /^(?:how|what|why|where|when|which|explain|describe|summarize|tell me|show me|is|are|does|do|can|could|would|will|should)\b/.test(text)) return false;
   if (new RegExp(`\\b(?:don't|do not|never|avoid)\\s+(?:please\\s+)?${action}\\b`).test(text)) return false;
-  const selfTarget = "(?:your(?: own)?(?: harness)? (?:code|source)|own source|agentic\\.harness(?:['’]s)?(?: (?:ui|server|app|code|source|history))?|the harness(?: (?:ui|server|app|code|source|history))?|harness (?:ui|server|app|code|source|history))";
+  // Both names resolve to this runtime: "agentic.sidekick" is the product, "harness"
+  // remains its package, CLI and repository name, and users say either.
+  const selfName = "(?:agentic\\.(?:harness|sidekick)|harness|sidekick)";
+  const selfTarget = `(?:your(?: own)?(?: (?:harness|sidekick))? (?:code|source)|own source|${selfName}(?:['’]s)?(?: (?:ui|server|app|code|source|history))?|the (?:harness|sidekick)(?: (?:ui|server|app|code|source|history))?|(?:harness|sidekick) (?:ui|server|app|code|source|history))`;
   return new RegExp(`\\b${action}\\s+${selfTarget}\\b`).test(text)
     || new RegExp(`\\b(?:in|for)\\s+${selfTarget}\\s*[:,]\\s*${action}\\b`).test(text)
-    || new RegExp(`\\b${action}\\b[^.!?]{0,80}\\b(?:in|of|for|to)\\s+(?:agentic\\.harness|your own (?:code|source))\\b`).test(text);
+    || new RegExp(`\\b${action}\\b[^.!?]{0,80}\\b(?:in|of|for|to)\\s+(?:agentic\\.(?:harness|sidekick)|your own (?:code|source))\\b`).test(text);
 }
 
-/** A direct, non-mutating question about agentic.harness may receive source context. */
+/** A direct, non-mutating question about agentic.sidekick may receive source context. */
 export function harnessInquiry(task: string): boolean {
   const text = task.toLowerCase().replace(/(?:"[^"\n]*"|'[^'\n]*'|“[^”\n]*”|‘[^’\n]*’)/g, " ").replace(/\s+/g, " ").trim();
   if (!text || /\b(?:test(?:ing)?|project)\s+harness\b/.test(text)) return false;
-  return /\b(?:agentic\.harness|(?:the )?harness)\b/.test(text)
+  return /\b(?:agentic\.(?:harness|sidekick)|(?:the )?(?:harness|sidekick))\b/.test(text)
     && /\b(?:how|what|why|where|can|could|would|should|does|explain|describe|architecture|work|edit|change|modify)\b/.test(text);
 }
 
-/** Walk up from `start` to the agentic.harness monorepo root (package.json named "deepharness"). */
+/** Walk up from `start` to the source monorepo root (package.json named "agentic.harness" or "deepharness"). */
 export function findSourceRoot(start: string): string | null {
   let dir = start;
   for (let i = 0; i < 10; i++) {
@@ -73,7 +76,7 @@ export function findSourceRoot(start: string): string | null {
 const CLIENT_NAMES: Record<SelfState["client"], string> = {
   web: "the web UI (Bun server in apps/web)",
   cli: "the `harness` CLI (apps/cli)",
-  desktop: "the agentic.harness macOS app (Tauri shell running the compiled web server)",
+  desktop: "the agentic.sidekick macOS app (Tauri shell running the compiled web server)",
 };
 
 export function buildSelfKnowledge(state: SelfState): string {
@@ -84,18 +87,18 @@ export function buildSelfKnowledge(state: SelfState): string {
     ? `This is the packaged desktop app: source edits do not change the running UI, server, providers, or native shell. Rebuild and install the desktop bundle using apps/desktop/README.md, then relaunch the app for every source change to take effect.`
     : `This is a source-run client: apps/web/index.html and brand.css take effect after page reload; server, provider, router, and package changes require restarting the Bun harness server.`;
   const parts = [
-    `Your name is agentic.harness. You are the user's local multi-model agent runtime.`,
-    `Current profile: ${state.profile}. Selected working folder: ${state.workspace}. Treat it as the default referent and scope for every ordinary request. Do not switch to agentic.harness source merely because Self-evolve is on or the task mentions an app, code, UI, history, or a harness project.`,
+    `Your name is agentic.sidekick. You are the user's local multi-model agent runtime.`,
+    `Current profile: ${state.profile}. Selected working folder: ${state.workspace}. Treat it as the default referent and scope for every ordinary request. Do not switch to agentic.sidekick source merely because Self-evolve is on or the task mentions an app, code, UI, history, or a harness project.`,
     `Agent file access: ${state.access}. Self-evolve: ${state.selfEvolve ? "on" : "off"}. Only claim execution after actual tool results. Preserve ~/.deepharness user data unless the user explicitly asks to change it.`,
   ];
 
   if (askingAboutHarness && state.sourceRoot) {
     parts.push(
-      `This task explicitly concerns agentic.harness. Its source is available at ${state.sourceRoot}; read only relevant files for an explanation. Unless this is an explicit modification request, keep the selected working folder as the working directory and treat source access as read-only.`,
+      `This task explicitly concerns agentic.sidekick. Its source is available at ${state.sourceRoot}; read only relevant files for an explanation. Unless this is an explicit modification request, keep the selected working folder as the working directory and treat source access as read-only.`,
     );
   } else if (askingAboutHarness) {
     parts.push(
-      `This task explicitly concerns agentic.harness, but no source folder is configured. Describe only what this context supports.`,
+      `This task explicitly concerns agentic.sidekick, but no source folder is configured. Describe only what this context supports.`,
     );
   }
 
@@ -115,13 +118,13 @@ export function buildSelfKnowledge(state: SelfState): string {
       ].join("\n"),
     );
   } else if (changingSelf && state.selfEvolve) {
-    parts.push(`Self-evolve is on, but no source folder is configured. This task cannot modify agentic.harness from this runtime.`);
+    parts.push(`Self-evolve is on, but no source folder is configured. This task cannot modify agentic.sidekick from this runtime.`);
   } else if (changingSelf) {
     parts.push(
-      `This is an explicit request to modify agentic.harness, but Self-evolve is off. Do not modify its source. Tell the user to enable the chat 🧬 Self-evolve control; read-only access still overrides it.`,
+      `This is an explicit request to modify agentic.sidekick, but Self-evolve is off. Do not modify its source. Tell the user to enable the chat 🧬 Self-evolve control; read-only access still overrides it.`,
     );
   } else if (state.selfEvolve) {
-    parts.push(`Self-evolve is armed only for an explicit request to modify agentic.harness. This ordinary task remains scoped to the selected working folder.`);
+    parts.push(`Self-evolve is armed only for an explicit request to modify agentic.sidekick. This ordinary task remains scoped to the selected working folder.`);
   }
   return parts.join("\n\n");
 }

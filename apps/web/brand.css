@@ -258,6 +258,19 @@ body[data-theme="inverse"]::before { background: rgba(238, 240, 251, .72); }
 }
 .btn-stop:hover { border-color: color-mix(in srgb, var(--fail) 55%, transparent); color: var(--fail); }
 
+/* Steer = redirect the live turn now; Queue = wait your turn. Both quieter than Send. */
+.btn-steer {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent); font-weight: 600;
+}
+.btn-steer:hover { border-color: var(--accent); box-shadow: var(--glow); transform: translateY(-1px); }
+.btn-queue {
+  background: transparent; border-color: var(--border); color: var(--text-dim); font-weight: 600;
+}
+.btn-queue:hover { border-color: color-mix(in srgb, var(--text) 40%, transparent); color: var(--text); }
+.btn-steer:disabled, .btn-queue:disabled { opacity: .4; transform: none; box-shadow: none; cursor: not-allowed; }
+
 /* ── 7 · Panels (Settings / Routines / Artifacts / Skills / Tools) ────────── */
 .panel { max-width: 880px; margin: 0 auto; padding: 26px 22px; }
 .panel h2 { font-size: 20px; font-weight: 700; margin: 0 0 4px; }
@@ -308,13 +321,13 @@ body[data-theme="inverse"]::before { background: rgba(238, 240, 251, .72); }
   border-radius: 999px; padding: 2px 8px;
 }
 
-input[type="text"], textarea.panel-input {
+input[type="text"], input[type="password"], textarea.panel-input {
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
   font-family: var(--font); font-size: 13px; color: var(--text); padding: 8px 10px;
   transition: border-color var(--t-fast);
 }
-input[type="text"]::placeholder, textarea.panel-input::placeholder { color: var(--text-faint); }
-input[type="text"]:focus, textarea.panel-input:focus { border-color: var(--border-strong); outline: none; }
+input[type="text"]::placeholder, input[type="password"]::placeholder, textarea.panel-input::placeholder { color: var(--text-faint); }
+input[type="text"]:focus, input[type="password"]:focus, textarea.panel-input:focus { border-color: var(--border-strong); outline: none; }
 textarea.panel-input { resize: vertical; min-height: 74px; width: 100%; }
 
 .empty { border: 1px dashed var(--border-strong); border-radius: var(--radius); text-align: center; color: var(--text-dim); font-size: 13px; padding: 26px; }
@@ -630,7 +643,7 @@ body, [data-theme="inverse"] body { background-image: none !important; }
   .composer-bar { flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
   .composer-bar .spacer { display: none; }
   .composer-bar .chk { font-size: 11px; }
-  .composer-bar .btn-send, .composer-bar .btn-stop { margin-left: auto; }
+  .composer-bar .btn-send, .composer-bar .btn-steer { margin-left: auto; }
 }
 
 /* Phone shell: keep the conversation tall. The full rail becomes an explicit
@@ -783,7 +796,7 @@ h2, h3, .brand .name, .fsdialog h3, .panel h2 { font-family: var(--display); fon
 [data-theme="inverse"] .tag { border-color: #B8B3A3; color: #5C5852; }
 [data-theme="inverse"] .noised { opacity: .05; }
 
-/* Signature — agentic.lancesmith.cc, hover types the domain in (site-faithful) */
+/* Signature — reads "agentic."; hover (or focus) types "sidekick" in, site-faithful */
 .signature {
   display: inline-flex; align-items: baseline; gap: 0;
   font-family: var(--display); font-weight: 520; font-size: 1.02rem;
@@ -1049,9 +1062,43 @@ body { overflow: hidden; }
 .main, #view { min-height: 0; }
 @media (max-width: 860px) { .app { grid-template-rows: auto minmax(0, 1fr); } }
 
+/* shared resources: folders and files granted beyond the working folder */
+.shared-list { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 12px; }
+.shared-row { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; }
+.shared-row .tool-cmd { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shared-row .ghost { flex: none; }
+.shared-add { display: flex; gap: 8px; }
+.shared-add input { flex: 1 1 auto; min-width: 0; }
+
+/* bring-your-own provider keys */
+.keyrow { border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; padding: 12px 0 2px; }
+.keyrow:first-child { border-top: none; padding-top: 2px; }
+.keyrow-head { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; }
+.keyrow-head strong { font-size: 13px; }
+.keyrow .shared-add { margin-bottom: 4px; }
+
+/* Settings → Show reasoning: off hides thinking folds that already streamed. */
+[data-reasoning="off"] .reasoning { display: none !important; }
+
 /* composer attachments */
 .attach-tray { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px 0; }
 .attach-tray[hidden] { display: none; }
+
+.queue-tray { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px 0; }
+.queue-tray[hidden] { display: none; }
+.queue-chip {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  font-size: 12px; color: var(--text-dim);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  border: 1px dashed var(--border); border-radius: 9999px; padding: 3px 5px 3px 9px;
+}
+.queue-chip.steer { border-style: solid; border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent); }
+.queue-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--text-faint); flex: none;
+}
+.queue-chip.steer .queue-tag { color: var(--accent); }
+.queue-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
 .attach-chip, .file-chip {
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
   font-size: 12px; font-weight: 400; color: var(--text);

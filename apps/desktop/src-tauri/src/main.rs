@@ -1,4 +1,4 @@
-// agentic.harness — a native macOS window around the agentic.harness web UI.
+// agentic.sidekick — a native macOS window around the agentic.sidekick web UI.
 //
 // On launch it shows a bundled splash, then either reuses a harness already
 // answering on 127.0.0.1:8790 or starts the bundled `harness-server` binary
@@ -22,6 +22,8 @@ use tauri::{
 };
 
 const PORT: u16 = 8790;
+/// The server exits with this when the user asks to restart it (Settings → Restart harness).
+const RESTART_EXIT_CODE: i32 = 86;
 /// Safari's WebKit UA plus a tag the page uses to switch on native title-bar spacing.
 const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) AgenticHarness/0.1";
 const LOG_HINT: &str = "See ~/.deepharness/logs/desktop-server.log";
@@ -33,7 +35,7 @@ fn harness_url() -> Url {
     Url::parse(&format!("http://127.0.0.1:{PORT}/")).expect("static harness url")
 }
 
-/// Something on the port answers like a agentic.harness server.
+/// Something on the port answers like an agentic.sidekick server.
 fn harness_running() -> bool {
     let addr = SocketAddr::from(([127, 0, 0, 1], PORT));
     let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(300)) else {
@@ -200,11 +202,55 @@ fn boot(app: AppHandle, window: WebviewWindow) {
     match ensure_harness(&app) {
         Ok(()) => {
             let _ = window.navigate(harness_url());
+            watch_for_restart(app, window);
         }
         Err(message) => {
             thread::sleep(Duration::from_millis(400)); // let the splash define showError
             let arg = serde_json::to_string(&message).unwrap_or_else(|_| "\"The harness failed to start.\"".into());
             let _ = window.eval(&format!("window.showError && window.showError({arg})"));
+        }
+    }
+}
+
+/// Start a fresh server when the old one exits asking for a restart, then reload
+/// the window. A crash or a normal quit is left alone.
+fn watch_for_restart(app: AppHandle, window: WebviewWindow) {
+    loop {
+        thread::sleep(Duration::from_millis(500));
+        let finished = {
+            let state = app.state::<Sidecar>();
+            let mut guard = state.0.lock().unwrap();
+            let Some(child) = guard.as_mut() else { return }; // reused someone else's server
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    guard.take();
+                    Some(status.code().unwrap_or(0))
+                }
+                _ => None,
+            }
+        };
+        let Some(code) = finished else { continue };
+        if code != RESTART_EXIT_CODE {
+            return;
+        }
+        match spawn_sidecar(&app) {
+            Ok(child) => {
+                app.state::<Sidecar>().0.lock().unwrap().replace(child);
+                let started = Instant::now();
+                while started.elapsed() < Duration::from_secs(45) && !harness_running() {
+                    thread::sleep(Duration::from_millis(250));
+                }
+                if harness_running() {
+                    let _ = window.navigate(harness_url());
+                } else {
+                    let _ = window.eval(&toast_js(&format!("The harness did not come back. {LOG_HINT}")));
+                    return;
+                }
+            }
+            Err(message) => {
+                let _ = window.eval(&toast_js(&format!("Restart failed: {message}")));
+                return;
+            }
         }
     }
 }
@@ -256,7 +302,7 @@ fn main() {
         .setup(|app| {
             let downloads = app.path().download_dir().unwrap_or_else(|_| std::env::temp_dir());
             let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .title("agentic.harness")
+                .title("agentic.sidekick")
                 .inner_size(1320.0, 860.0)
                 .min_inner_size(960.0, 640.0)
                 .title_bar_style(TitleBarStyle::Overlay)
@@ -295,7 +341,7 @@ fn main() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("failed to build the agentic.harness app")
+        .expect("failed to build the agentic.sidekick app")
         .run(|app, event| {
             if let RunEvent::Exit = event {
                 if let Some(mut child) = app.state::<Sidecar>().0.lock().unwrap().take() {

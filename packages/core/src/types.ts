@@ -157,7 +157,7 @@ export interface RoutingDecision {
   fallbacks: string[]; // qualified model ids, in order
   confidence: number; // 0-1
   escalated?: boolean;
-  classifiedBy: "heuristic" | "local-model" | "manual-pin" | "delegation-frontmatter";
+  classifiedBy: "heuristic" | "jev" | "local-model" | "manual-pin" | "delegation-frontmatter";
 }
 
 export type TaskCategory =

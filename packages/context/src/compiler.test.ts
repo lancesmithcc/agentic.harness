@@ -53,7 +53,7 @@ describe("context integrity", () => {
         expect(findSourceRoot(cwd)).toBe(cwd);
       }
       const self = buildSelfKnowledge({ sourceRoot: null, workspace: cwd, profile: "home", client: "web", access: "read-only", selfEvolve: false });
-      expect(self).toContain("Your name is agentic.harness.");
+      expect(self).toContain("Your name is agentic.sidekick.");
       expect(self).toContain("~/.deepharness");
     } finally { rmSync(cwd, { recursive: true, force: true }); }
   });
@@ -91,6 +91,10 @@ describe("context integrity", () => {
       "Self-evolve: in your own source, edit src/engine.ts so its exported version is 2 instead of 1.",
       "In agentic.harness, fix the chat toolbar", "For your own code, add a chat button",
       "Add a chat button to agentic.harness",
+      // The product is agentic.sidekick now; both names must reach the same runtime.
+      "change agentic.sidekick UI", "fix agentic.sidekick’s UI", "refactor the sidekick",
+      "could you please edit agentic.sidekick server?", "Add a chat button to agentic.sidekick",
+      "rewrite your own sidekick code in 'src/engine.ts'",
     ]) {
       expect(selfEvolutionIntent(task)).toBe(true);
     }
@@ -100,6 +104,7 @@ describe("context integrity", () => {
       "the user said 'fix harness history'", "how could we edit harness permissions?",
       "Can agentic.harness edit files?", "Explain how the harness can edit files",
       "Does agentic.harness change its own source?", "Should we fix the harness?",
+      "do not fix agentic.sidekick UI", "Can agentic.sidekick edit files?",
     ]) {
       expect(selfEvolutionIntent(task)).toBe(false);
     }
@@ -108,6 +113,8 @@ describe("context integrity", () => {
   test("allows explicit harness questions to receive read-only source context", () => {
     expect(harnessInquiry("How could we edit harness permissions?")).toBe(true);
     expect(harnessInquiry("Explain agentic.harness architecture")).toBe(true);
+    expect(harnessInquiry("Explain agentic.sidekick architecture")).toBe(true);
+    expect(harnessInquiry("What can the sidekick do?")).toBe(true);
     expect(harnessInquiry("how could we edit this app?")).toBe(false);
     expect(harnessInquiry("how does this app work?")).toBe(false);
     expect(harnessInquiry("explain the test harness")).toBe(false);
@@ -122,7 +129,7 @@ describe("context integrity", () => {
     const state = { sourceRoot: root, workspace: root, profile: "home", client: "desktop" as const, access: "workspace" as const, selfEvolve: true };
     const compact = buildSelfKnowledge({ ...state, contextWindow: 8192, task: "review the selected project" });
     expect(compact.length).toBeLessThan(2000);
-    expect(compact).toContain("Your name is agentic.harness.");
+    expect(compact).toContain("Your name is agentic.sidekick.");
     expect(compact).toContain("Selected working folder");
     expect(compact).not.toContain("Whole-architecture rewrites are allowed");
     expect(compact).not.toContain("apps/web");

@@ -1,11 +1,11 @@
 /**
- * agentic.harness web dashboard — the runtime's second client.
+ * agentic.sidekick web dashboard — the runtime's second client.
  * Serves one page + a tiny JSON/SSE API on localhost.
  */
-import { activeProfileName, ensureHarnessHome, loadConfig, HARNESS_HOME } from "@harness/core";
+import { SecretStore, activeProfileName, ensureHarnessHome, loadConfig, HARNESS_HOME } from "@harness/core";
 import type { ProviderHealth, RoutingDecision } from "@harness/core";
-import { buildFleet, fleetModels } from "@harness/providers";
-import { findDelegationDoc, parseDelegation, route, taskRequiresTools } from "@harness/router";
+import { API_KEY_PROVIDERS, DEEPSEEK_HARNESS_PROVIDER, buildFleet, fleetModels } from "@harness/providers";
+import { findDelegationDoc, jevDecider, parseDelegation, resetJevDeciders, route, routeAsync, taskRequiresTools } from "@harness/router";
 import { buildSelfKnowledge, compileContext, findSourceRoot, harnessInquiry, selfEvolutionIntent } from "@harness/context";
 import { SessionStore, isSessionId, listSessions, sessionPath, usageSummary } from "@harness/sessions";
 import { askRouted, type OrchestratorContext } from "../../cli/src/orchestrator.ts";
@@ -13,7 +13,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSy
 import type { Dirent } from "node:fs";
 import { spawn, execFile, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { join, dirname, extname, resolve, basename } from "node:path";
+import { join, dirname, extname, isAbsolute, resolve, basename } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { scanSkills } from "@harness/skills";
@@ -116,12 +116,14 @@ interface HarnessSettings {
   reasoningOff: boolean;
   /** How much CLI agents may do in the working folder (Settings → Agent file access). */
   agentAccess: "read-only" | "workspace" | "full";
+  /** Folders and files outside the working folder that agents may also reach (Settings → Shared resources). */
+  sharedPaths: string[];
   /** Legacy setting retained on disk; self-evolve permission now belongs to each chat. */
   selfEvolve: boolean;
   /** DeepHarness source root; detected when the server runs from the repo, so the desktop app can find it. */
   selfSourceRoot: string;
 }
-const DEFAULT_SETTINGS: HarnessSettings = { astraAvailable: false, theme: "gold", workspaces: {}, customModels: [], hiddenModels: [], startModel: "", reasoningOff: false, agentAccess: "workspace", selfEvolve: false, selfSourceRoot: "" };
+const DEFAULT_SETTINGS: HarnessSettings = { astraAvailable: false, theme: "gold", workspaces: {}, customModels: [], hiddenModels: [], startModel: "", reasoningOff: false, agentAccess: "workspace", sharedPaths: [], selfEvolve: false, selfSourceRoot: "" };
 function loadSettings(): HarnessSettings {
   const path = join(HARNESS_HOME, "settings.json");
   if (!existsSync(path)) return { ...DEFAULT_SETTINGS };
@@ -344,9 +346,9 @@ function runRoutine(r: Routine, profile: string): string {
         session.append({ v: 1, ts: ts(), kind: "user-message", text: task });
         const history = session.messages().slice(1, -1); // skip the title turn
         const useTools = needsTools(task, session);
-        const decision = route({ task, models: pool, health: ctx.health, delegation: ctx.delegation, pinnedModel: pin, requiresTools: useTools });
+        const decision = await routeAsync({ task, models: pool, health: ctx.health, delegation: ctx.delegation, pinnedModel: pin, requiresTools: useTools }, decider());
         const target = pool.find((m) => m.id === decision.selected);
-        const request = { ...agentRequest(workspace, task), tools: useTools };
+        const request = { ...agentRequest(workspace, task, false, target?.provider), tools: useTools };
         const messages = target
           ? compileContext(task, target, { cwd: request.cwd, history, skillInstructions: toolsHint(), self: selfKnowledge(profile, workspace, target.capabilities.context, task) })
           : [{ role: "user" as const, content: task }];
@@ -396,13 +398,36 @@ function heartbeatTick(): void {
 }
 setInterval(heartbeatTick, 30_000);
 
+// ---- Decision model -------------------------------------------------------
+/** Jev classifies the task before routing; no key ⇒ keyword heuristic. */
+const decider = () => jevDecider(activeProfileName());
+
 // ---- Agent access, attachments, artifacts ---------------------------------
 const PROFILE_RE = /^[a-z0-9_-]+$/i;
 const AGENT_TIMEOUT_MS = 20 * 60_000;
 const MAX_UPLOAD = 25 * 1024 * 1024;
 
+const MAX_SHARED_PATHS = 24;
+
+/**
+ * Shared resources as directories an agent can actually be granted. `--add-dir`
+ * and the SDK sandbox both work on folders, so a shared *file* grants the folder
+ * that holds it — the Settings list says so next to each entry.
+ */
+function sharedDirs(paths: string[]): string[] {
+  const dirs: string[] = [];
+  for (const raw of paths.slice(0, MAX_SHARED_PATHS)) {
+    const abs = resolve(String(raw || "").trim());
+    if (!isAbsolute(abs)) continue;
+    let dir: string;
+    try { dir = statSync(abs).isDirectory() ? abs : dirname(abs); } catch { continue; }
+    if (!dirs.includes(dir)) dirs.push(dir);
+  }
+  return dirs;
+}
+
 /** All adapters receive the working folder, selected access, and registered MCP servers. */
-function agentRequest(workspace: string, task = "", selfEvolve = false) {
+function agentRequest(workspace: string, task = "", selfEvolve = false, provider?: string) {
   const s = loadSettings();
   let access: "read-only" | "workspace" | "full" = s.agentAccess === "read-only" || s.agentAccess === "full" ? s.agentAccess : "workspace";
   const root = sourceRoot();
@@ -411,7 +436,12 @@ function agentRequest(workspace: string, task = "", selfEvolve = false) {
   // requests use the source as that root without raising the selected access.
   const cwd = root && editingSelf && access !== "read-only" ? root : workspace;
   if (!editingSelf && (harnessInquiry(task) || (root && (cwd === root || cwd.startsWith(root + "/"))))) access = "read-only";
-  return { cwd, access, mcpConfig: mcpConfigPath(), timeoutMs: AGENT_TIMEOUT_MS, addDirs: [] as string[] };
+  // The official DeepSeek sandbox has exactly one writable root and refuses a
+  // directory outside it below "full" access, so shared folders are withheld
+  // from that adapter rather than failing the whole turn.
+  const dshLimited = provider === "deepseek-harness" && access !== "full";
+  const shared = dshLimited ? [] : sharedDirs(s.sharedPaths ?? []).filter((dir) => dir !== cwd);
+  return { cwd, access, mcpConfig: mcpConfigPath(), timeoutMs: AGENT_TIMEOUT_MS, addDirs: shared };
 }
 
 function needsTools(task: string, session: SessionStore): boolean {
@@ -420,6 +450,34 @@ function needsTools(task: string, session: SessionStore): boolean {
 
 // ---- Self-knowledge + self-evolve -----------------------------------------
 const HARNESS_CLIENT: "web" | "desktop" = process.env.HARNESS_CLIENT === "desktop" ? "desktop" : "web";
+
+/** Exit code the desktop shell watches for: "start me again", not "I crashed". */
+const RESTART_EXIT_CODE = 86;
+
+/**
+ * Restart the harness so edited source takes effect. In the desktop app the shell
+ * respawns the server; started from the repo the process relaunches itself after a
+ * beat so the port is free. Either way, running turns are cancelled first.
+ */
+function queueRestart(mode: "desktop" | "self"): void {
+  setTimeout(() => {
+    for (const turn of activeTurns.values()) turn.abort();
+    if (mode === "self") {
+      const command = [process.execPath, ...process.argv.slice(1)]
+        .map((part) => `'${part.replaceAll("'", "'\\''")}'`)
+        .join(" ");
+      const child = Bun.spawn(["/bin/sh", "-c", `sleep 1; exec ${command}`], {
+        cwd: process.cwd(),
+        env: process.env,
+        stdin: "ignore",
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+      child.unref();
+    }
+    process.exit(mode === "desktop" ? RESTART_EXIT_CODE : 0);
+  }, 250);
+}
 /** Source root when this server runs from the repo; remembered so the compiled desktop app can find it too. */
 const DETECTED_SOURCE_ROOT = findSourceRoot(here);
 if (DETECTED_SOURCE_ROOT && !findSourceRoot(loadSettings().selfSourceRoot || "/")) {
@@ -771,7 +829,7 @@ Bun.serve({
     if (url.pathname.startsWith("/api/")) {
       const origin = req.headers.get("origin");
       if ((origin && origin !== url.origin) || req.headers.get("sec-fetch-site") === "cross-site") return json({ error: "cross-site request blocked" }, 403);
-      if (url.pathname === "/api/health") return json({ ok: true, name: "agentic.harness", version: "0.1.0", activeTurns: activeTurns.size });
+      if (url.pathname === "/api/health") return json({ ok: true, name: "agentic.sidekick", version: "0.1.0", activeTurns: activeTurns.size });
     }
 
     if (url.pathname === "/" || url.pathname === "/index.html") {
@@ -805,6 +863,58 @@ Bun.serve({
       const modelsMeta = JSON.parse(readFileSync(join(WEB_ROOT,"models-meta.json"), "utf8"));
       const verbs = JSON.parse(readFileSync(join(WEB_ROOT,"verbs.json"), "utf8"));
       return json({ ...modelsMeta, ...verbs, settings: loadSettings() });
+    }
+
+    // ---- Bring-your-own provider keys ------------------------------------
+    // Values are write-only: they go straight to this profile's Keychain and
+    // are never read back out to the page. Resolution order per provider is
+    // profile-config reference → environment variable → Keychain, so a key
+    // exported in the launching shell still wins over a stored one.
+    if (url.pathname === "/api/providers/keys") {
+      if (!PROFILE_RE.test(profile)) return json({ error: "bad profile" }, 400);
+      const store = new SecretStore(profile);
+      // Jev is not a model provider, but it takes a key the same way, so it
+      // belongs in the same place rather than in a terminal-only command.
+      const catalog = [...API_KEY_PROVIDERS, DEEPSEEK_HARNESS_PROVIDER, { id: "jev", label: "Jev — task routing (TypeSafe)", envVar: "JEV_API_KEY" }];
+      const describe = () => {
+        const configured = loadConfig(profile).profile.providers;
+        return catalog.map((entry) => {
+          const ref = configured[entry.id]?.apiKey;
+          const fromEnv = Boolean(process.env[entry.envVar]?.trim());
+          const stored = Boolean(store.get(entry.id));
+          const source = ref ? "config" : fromEnv ? "environment" : stored ? "keychain" : "none";
+          return { ...entry, stored, source, configured: source !== "none", overriddenByEnv: stored && fromEnv && !ref };
+        });
+      };
+
+      if (req.method === "GET") return json({ profile, providers: describe() });
+
+      if (req.method === "PUT") {
+        const body = (await req.json().catch(() => ({}))) as { provider?: string; key?: string };
+        const entry = catalog.find((candidate) => candidate.id === body.provider);
+        if (!entry) return json({ error: "unknown provider" }, 400);
+        const key = String(body.key ?? "").trim();
+        if (!key) return json({ error: "key required" }, 400);
+        if (key.length > 512 || /[\s\x00-\x1f]/.test(key)) return json({ error: "that does not look like an API key" }, 400);
+        try { new SecretStore(profile).set(entry.id, key); }
+        catch { return json({ error: "macOS Keychain refused to store the key" }, 500); }
+        discoveryCache.clear();
+        healthCache.clear();
+        resetJevDeciders();
+        return json({ profile, providers: describe() });
+      }
+
+      if (req.method === "DELETE") {
+        const id = url.searchParams.get("provider") ?? "";
+        const entry = catalog.find((candidate) => candidate.id === id);
+        if (!entry) return json({ error: "unknown provider" }, 400);
+        const removed = new SecretStore(profile).delete(entry.id);
+        discoveryCache.clear();
+        healthCache.clear();
+        resetJevDeciders();
+        return json({ profile, removed, providers: describe() });
+      }
+      return json({ error: "method not allowed" }, 405);
     }
 
     if (url.pathname === "/api/settings" && req.method === "GET") return json(loadSettings());
@@ -895,6 +1005,17 @@ Bun.serve({
 
     if (url.pathname === "/api/settings" && req.method === "PUT") {
       const body = (await req.json().catch(() => ({}))) as Partial<HarnessSettings>;
+      if (body.sharedPaths !== undefined) {
+        if (!Array.isArray(body.sharedPaths)) return json({ error: "sharedPaths must be a list of absolute paths" }, 400);
+        const cleaned: string[] = [];
+        for (const raw of body.sharedPaths) {
+          const abs = resolve(String(raw ?? "").trim());
+          if (!isAbsolute(abs) || !existsSync(abs)) return json({ error: `not a folder or file on this Mac: ${raw}` }, 400);
+          if (!cleaned.includes(abs)) cleaned.push(abs);
+        }
+        if (cleaned.length > MAX_SHARED_PATHS) return json({ error: `at most ${MAX_SHARED_PATHS} shared resources` }, 400);
+        body.sharedPaths = cleaned;
+      }
       const s = { ...loadSettings(), ...body };
       saveSettings(s);
       return json(s);
@@ -950,7 +1071,7 @@ Bun.serve({
         const body = (await req.json().catch(() => ({}))) as { sourceRoot?: string };
         const raw = String(body.sourceRoot ?? "").trim();
         const abs = raw.startsWith("~/") ? join(homedir(), raw.slice(2)) : resolve(raw);
-        if (!raw || findSourceRoot(abs) !== abs) return json({ error: "that folder is not the agentic.harness source root" }, 400);
+        if (!raw || findSourceRoot(abs) !== abs) return json({ error: "that folder is not the agentic.sidekick source root" }, 400);
         const s = loadSettings();
         s.selfSourceRoot = abs;
         saveSettings(s);
@@ -972,6 +1093,17 @@ Bun.serve({
         const root = sourceRoot();
         if (!root) return json({ error: "No source folder configured" }, 400);
         return json({ evolution: await syncEvolution(root) });
+      }
+      // Restarting swaps this whole process, so only this Mac may ask for it.
+      if (url.pathname === "/api/self/restart" && req.method === "POST") {
+        const ip = server.requestIP(req)?.address ?? "";
+        if (!["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(ip)) {
+          return json({ error: "only available on the Mac running the harness" }, 403);
+        }
+        const mode = HARNESS_CLIENT === "desktop" ? "desktop" : "self";
+        const cancelled = activeTurns.size;
+        queueRestart(mode);
+        return json({ restarting: true, mode, cancelled });
       }
       const q = req.method === "POST" ? ((await req.json().catch(() => ({}))) as Record<string, unknown>) : Object.fromEntries(url.searchParams);
       const sid = String(q.session ?? "");
@@ -1239,12 +1371,12 @@ Bun.serve({
       const task = url.searchParams.get("task") ?? "";
       if (!task.trim()) return json({ error: "task required" }, 400);
       const ctx = await buildWebContext(profile);
-      const decision: RoutingDecision = route({
+      const decision: RoutingDecision = await routeAsync({
         task,
         models: ctx.models,
         health: ctx.health,
         delegation: ctx.delegation,
-      });
+      }, decider());
       return json({ decision });
     }
 
@@ -1328,10 +1460,10 @@ Bun.serve({
             }
             const effectivePin = body.model || (settings.startModel && pool.some((m) => m.id === settings.startModel) ? settings.startModel : undefined);
             const useTools = typeof body.tools === "boolean" ? body.tools : attachments.length > 0 || needsTools(task, session);
-            const decision0 = route({ task, models: pool, health: ctx.health, delegation: ctx.delegation, pinnedModel: effectivePin, escalate: body.escalate, requiresTools: useTools });
+            const decision0 = await routeAsync({ task, models: pool, health: ctx.health, delegation: ctx.delegation, pinnedModel: effectivePin, escalate: body.escalate, requiresTools: useTools }, decider());
             const target = pool.find((m) => m.id === decision0.selected);
-            if (selfEvolutionIntent(task) && !selfEvolve) throw new Error("Turn on 🧬 self evolve in this chat before asking to edit agentic.harness.");
-            const request = { ...agentRequest(workspace, task, selfEvolve), tools: useTools };
+            if (selfEvolutionIntent(task) && !selfEvolve) throw new Error("Turn on 🧬 self evolve in this chat before asking to edit agentic.sidekick.");
+            const request = { ...agentRequest(workspace, task, selfEvolve, target?.provider), tools: useTools };
             if (turnAbort.signal.aborted) throw new Error("turn cancelled");
             const messages = target
               ? compileContext(task + attached.forModel, target, { cwd: request.cwd, history, skillInstructions: toolsHint(), self: selfKnowledge(profile, workspace, target.capabilities.context, task, selfEvolve) })
@@ -1417,4 +1549,4 @@ Bun.serve({
   },
 });
 
-console.log(`Agentic Harness web → http://localhost:${PORT} (profile: ${activeProfileName()})`);
+console.log(`agentic.sidekick web → http://localhost:${PORT} (profile: ${activeProfileName()})`);

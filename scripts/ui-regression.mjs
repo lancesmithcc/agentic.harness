@@ -152,9 +152,13 @@ try {
   await page.getByRole("button", { name: "work" }).click();
   await page.waitForFunction(() => document.querySelector("#profilePill").textContent === "work");
   expect(await page.locator("#profilePill").textContent() === "work", "profile switch did not win");
-  await page.getByRole("button", { name: "self evolve" }).click();
-  await page.waitForFunction(() => window.__S.selfEvolve === true && window.__S.sessionId.startsWith("context-"));
+  // 🧬 now opens a NEW chat rooted at the harness source instead of flipping
+  // self-evolve on the current one; that chat materializes on its first message.
+  await page.locator("#selfEvolveToggle").click();
+  await page.waitForFunction(() => window.__S.selfEvolve === true && window.__S.workspace === "/tmp/fake-harness" && window.__S.sessionId === null);
   expect(await page.locator("#selfEvolveToggle").getAttribute("aria-pressed") === "true", "per-chat self evolve did not persist");
+  await send("evolve");
+  await page.waitForFunction(() => typeof window.__S.sessionId === "string" && window.__S.selfEvolve === true);
   const contextId = await page.evaluate(() => window.__S.sessionId);
   await page.locator("#wsBtn").click();
   await page.locator(".fsrow").filter({ hasText: "fake-home" }).dblclick();
@@ -163,17 +167,15 @@ try {
   await page.evaluate(() => window.__ls());
   await page.waitForTimeout(20);
   expect(await page.evaluate((id) => window.__S.sessionId === id && window.__S.workspace === "/tmp/fake-home" && window.__S.selfEvolve, contextId), "status refresh overwrote the active chat context");
-  state.slowContext = true;
-  const asksBeforeContextRace = state.askCalls;
-  await page.getByRole("button", { name: "self evolve" }).click();
-  await page.waitForFunction(() => window.__S.contextSaving === true);
-  expect(await page.locator("#send").isDisabled(), "send remained enabled while chat context was saving");
-  await page.locator("#task").press("Enter");
-  expect(state.askCalls === asksBeforeContextRace, "send started while context was still saving");
+  // COVERAGE GAP — restore once the 🧬 redesign settles.
+  // These steps used to drive a slow context save by toggling self-evolve on the
+  // current chat, then assert that send stayed blocked until the save landed and
+  // that starting a new chat released the controls. 🧬 now opens a fresh chat and
+  // saves no context, so the race has no trigger here any more. The guarantee
+  // still matters; it needs a new entry point, not a guessed one.
   await page.getByRole("button", { name: "New session" }).click();
   await page.waitForTimeout(180);
-  expect(await page.evaluate(() => !window.__S.contextSaving && !document.querySelector("#selfEvolveToggle").disabled && window.__S.sessionId === null), "new chat left controls stuck after an invalidated context save");
-  state.slowContext = false;
+  expect(await page.evaluate(() => !window.__S.contextSaving && !document.querySelector("#selfEvolveToggle").disabled && window.__S.sessionId === null), "new chat left controls stuck");
 
   await send("late");
   expect(await page.locator("#selfEvolveToggle").isDisabled(), "self-evolve control stayed enabled during an active turn");
@@ -251,11 +253,13 @@ try {
   expect(narrow.controls.every((box) => box.left >= 0 && box.right <= narrow.viewport && box.bottom <= 844), "a composer control is unreachable at 390px");
   metrics.narrow = narrow;
   await page.screenshot({ path: join(qaRoot, "ui-narrow.png"), fullPage: true });
+  // The 🧬 controls now live in the rail, which is a drawer at this width.
+  await page.locator("#mobileMenu").click();
   await page.locator('#selfChatDetails summary').click();
   await page.getByLabel('Harness source checkout').waitFor({ state: 'visible' });
   const selfOptions = await page.locator('#selfChatOptions').boundingBox();
   expect(selfOptions && selfOptions.x >= 0 && selfOptions.x + selfOptions.width <= 390 && selfOptions.y >= 0, 'self-evolve options escaped the mobile viewport');
-  expect(await page.locator('#selfEvolveToggle').getAttribute('title') === 'self evolve', 'self-evolve tooltip changed');
+  expect(await page.locator('#selfEvolveToggle').getAttribute('title') === 'Self-evolve: new chat in the harness source', 'self-evolve tooltip changed');
   await page.screenshot({ path: join(qaRoot, 'ui-self-evolve-options.png'), fullPage: true });
   await page.keyboard.press('Escape');
   expect(!(await page.locator('#selfChatDetails').getAttribute('open')), 'Escape did not close self-evolve options');
